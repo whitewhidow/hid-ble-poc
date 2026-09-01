@@ -3,82 +3,61 @@ param(
     [string]$MAC
 )
 
-# PoC-KBD Windows pairing helper (pure WinRT, Windows PowerShell 5.1).
-# Discovers the advertising BLE board and pairs it Just-Works -- no PairTool,
-# no DeviceWatcher events, no PowerShell 7. Usage: pair_win.ps1 <MAC>
+# PoC-KBD Windows pairing helper (pure WinRT). Uses FromBluetoothAddressAsync
+# (address in, no scanning selector) instead of FindAllAsync, then pairs
+# Just-Works. Run in an -MTA PowerShell. ASCII only.
 
 $ErrorActionPreference = 'Stop'
 
-$want = ($MAC -replace '[:-]', '').ToUpperInvariant()
-if ($want -notmatch '^[0-9A-F]{12}$') { throw "Invalid Bluetooth MAC address: $MAC" }
+$hex = ($MAC -replace '[:-]', '').ToUpperInvariant()
+if ($hex -notmatch '^[0-9A-F]{12}$') { throw "Invalid Bluetooth MAC address: $MAC" }
+$addr = [Convert]::ToUInt64($hex, 16)
 
-Write-Host "PowerShell: $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
-Write-Host "Target MAC: $want"
-
-# WinRT Bluetooth-LE async never completes in an STA console (a known limitation);
-# it needs a multi-threaded apartment. Launch with:  powershell -MTA ...
-if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -eq 'STA') {
-    Write-Warning "Running in STA -- WinRT BLE async will hang. Re-run with:  powershell -MTA ..."
-}
+Write-Host ("PowerShell {0} ({1})" -f $PSVersionTable.PSVersion, $PSVersionTable.PSEdition)
+Write-Host ("Apartment : {0}" -f [System.Threading.Thread]::CurrentThread.GetApartmentState())
+Write-Host ("Target    : {0}  (0x{1})" -f $hex, $addr.ToString('X12'))
 Write-Host ""
 
-# ---- WinRT plumbing --------------------------------------------------------
-# AsTask (to await IAsyncOperation) lives in System.Runtime.WindowsRuntime.
 Add-Type -AssemblyName System.Runtime.WindowsRuntime -ErrorAction SilentlyContinue
-$null = [Windows.Devices.Enumeration.DeviceInformation, Windows.Devices.Enumeration, ContentType = WindowsRuntime]
-$null = [Windows.Devices.Bluetooth.BluetoothLEDevice,   Windows.Devices.Bluetooth,   ContentType = WindowsRuntime]
+$null = [Windows.Devices.Bluetooth.BluetoothLEDevice, Windows.Devices.Bluetooth, ContentType = WindowsRuntime]
+$null = [Windows.Devices.Enumeration.DevicePairingResult, Windows.Devices.Enumeration, ContentType = WindowsRuntime]
 
-function Await($op, $resultType) {
-    $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() |
+function Await($op, $rt) {
+    $m = [System.WindowsRuntimeSystemExtensions].GetMethods() |
         Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' } |
         Select-Object -First 1
-    $task = $asTask.MakeGenericMethod($resultType).Invoke($null, @($op))
-    if (-not $task.Wait(20000)) { throw "WinRT operation timed out" }
-    return $task.Result
+    $t = $m.MakeGenericMethod($rt).Invoke($null, @($op))
+    if (-not $t.Wait(15000)) { throw "WinRT operation timed out" }
+    return $t.Result
 }
 
-# ---- Discover (unpaired BLE devices) ---------------------------------------
-# The SDK-provided selector is a valid AQS the system enumerates quickly; a
-# hand-built ProtocolId AQS tends to make FindAllAsync hang.
-$selector = [Windows.Devices.Bluetooth.BluetoothLEDevice]::GetDeviceSelectorFromPairingState($false)
-
-Write-Host "Scanning for $MAC (keeps trying until found)..."
+Write-Host "Connecting to the board (keeps trying until it is in range)..."
 $dev = $null
+$n = 0
 while ($null -eq $dev) {
-    $found = Await ([Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync($selector)) ([Windows.Devices.Enumeration.DeviceInformationCollection])
-    foreach ($d in $found) {
-        # BLE DeviceInformation.Id embeds the device MAC.
-        if ((($d.Id -replace '[:-]', '').ToUpperInvariant()).Contains($want)) { $dev = $d; break }
+    $n++
+    try {
+        $dev = Await ([Windows.Devices.Bluetooth.BluetoothLEDevice]::FromBluetoothAddressAsync($addr)) ([Windows.Devices.Bluetooth.BluetoothLEDevice])
     }
-    if ($null -eq $dev) { Write-Host "." -NoNewline; Start-Sleep -Seconds 2 }
+    catch {
+        Write-Host ("  attempt {0}: {1}" -f $n, $_.Exception.Message)
+    }
+    if ($null -eq $dev) { Write-Host ("  not in cache yet ({0})..." -f $n); Start-Sleep -Seconds 2 }
 }
 
 Write-Host ""
-Write-Host "FOUND: $($dev.Name)"
-Write-Host "  $($dev.Id)"
-Write-Host ""
+Write-Host ("FOUND: {0}" -f $dev.Name)
 
-# ---- Pair (Just Works) -----------------------------------------------------
-$pairing = $dev.Pairing
-
-if ($pairing.IsPaired) {
-    Write-Host "Already paired."
-    exit 0
-}
-if (-not $pairing.CanPair) {
-    throw "Device reports it cannot be paired (CanPair = false)."
-}
+$p = $dev.DeviceInformation.Pairing
+if ($p.IsPaired) { Write-Host "Already paired."; exit 0 }
+if (-not $p.CanPair) { throw "Device reports it cannot be paired (CanPair = false)." }
 
 Write-Host "Pairing (Just Works)..."
-$result = Await ($pairing.PairAsync()) ([Windows.Devices.Enumeration.DevicePairingResult])
+$r = Await ($p.PairAsync()) ([Windows.Devices.Enumeration.DevicePairingResult])
+Write-Host ("Result: {0}" -f $r.Status)
 
-$status = "$($result.Status)"
-Write-Host "Result: $status"
-Write-Host ""
-
-if ($status -eq 'Paired' -or $status -eq 'AlreadyPaired') {
+if ("$($r.Status)" -eq 'Paired' -or "$($r.Status)" -eq 'AlreadyPaired') {
     Write-Host "SUCCESS"
     exit 0
 }
-
-throw "Pairing failed: $status"
+throw "Pairing failed: $($r.Status)"
