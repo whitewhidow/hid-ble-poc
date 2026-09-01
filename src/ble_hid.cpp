@@ -190,6 +190,7 @@ static void handleCmd(const char* cmd) {
         if (!pocFsRead(os, c)) { ctrlNotify("ferr:read"); return; }
         String hdr = "fbeg:"; hdr += os; hdr += ":"; hdr += c.length();
         ctrlNotify(hdr.c_str());
+        delay(20);                     // gap so fbeg isn't dropped before the first fdat
         const size_t CK = 160;
         for (size_t i = 0; i < c.length(); i += CK) {
             size_t n = (c.length() - i < CK) ? (c.length() - i) : CK;

@@ -14,6 +14,11 @@
   button.warn { background:transparent; color:#f7c948; border:1px solid #7a5c12; }
   button:disabled { opacity:.45; }
   input { flex:1; box-sizing:border-box; padding:12px; border-radius:10px; border:1px solid #30363d; background:#161b22; color:#e6edf3; font-size:16px; }
+  textarea { width:100%; box-sizing:border-box; padding:12px; border-radius:10px; border:1px solid #30363d; background:#161b22; color:#e6edf3; font-size:16px; resize:vertical; display:block; margin-bottom:10px; }
+  .tabs { display:flex; gap:6px; margin:6px 0 14px; }
+  .tabs button { flex:1; }
+  .tab { background:#161b22; color:#8b949e; border:1px solid #30363d; }
+  .tab.active { background:#22d3e0; color:#04181b; }
   .row { display:flex; gap:8px; margin:10px 0; align-items:center; }
   h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:#8b949e; margin:20px 0 6px; }
   .dev { display:flex; justify-content:space-between; align-items:center; background:#161b22; border:1px solid #21262d; border-radius:9px; padding:9px 11px; margin:6px 0; gap:8px; }
@@ -32,31 +37,40 @@
 <div id="stat"></div>
 
 <div id="app" hidden>
-  <div class="row">
-    <input id="text" placeholder="text to type on the PC" value="hello from my phone">
-    <button id="send">Send</button>
+  <div class="tabs">
+    <button class="tab active" data-tab="type">Type</button>
+    <button class="tab" data-tab="payloads">Payloads</button>
+    <button class="tab" data-tab="devices">Devices</button>
   </div>
 
-  <h2>OS payloads</h2>
-  <div class="sub" style="margin:0 0 8px">Edit the keystroke payload the board types on the PC, per OS. Saved straight to the board's filesystem — no reflash. (T-Embed only.)</div>
-  <div class="row" id="osrow">
-    <button class="sec os" data-os="linux" style="flex:1">Linux</button>
-    <button class="sec os" data-os="windows" style="flex:1">Windows</button>
-    <button class="sec os" data-os="macos" style="flex:1">macOS</button>
-  </div>
-  <textarea id="payload" rows="7" placeholder="load an OS above to edit its payload…"
-    style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font:13px/1.5 ui-monospace,monospace;resize:vertical" disabled></textarea>
-  <div class="row">
-    <span id="plstat" class="sub" style="flex:1;margin:0"></span>
-    <button id="plsave" disabled>Save to board</button>
-  </div>
+  <section id="tab-type">
+    <textarea id="text" rows="3" placeholder="text to type on the PC">hello from my phone</textarea>
+    <div class="row"><button id="send" style="flex:1">Send</button></div>
+    <div class="sub" style="margin:0">Typed into the paired PC over BLE-HID. Ctrl/⌘+Enter also sends.</div>
+  </section>
 
-  <h2>Board devices</h2>
-  <div class="row">
-    <button id="list" class="sec" style="flex:1">↻ Refresh</button>
-    <button id="drop" class="warn">Drop links</button>
-  </div>
-  <div id="devices"></div>
+  <section id="tab-payloads" hidden>
+    <div class="sub" style="margin:0 0 8px">Edit the keystroke payload the board types on the PC, per OS. Saved straight to the board's filesystem — no reflash. (T-Embed only.)</div>
+    <div class="row" id="osrow">
+      <button class="sec os" data-os="linux" style="flex:1">Linux</button>
+      <button class="sec os" data-os="windows" style="flex:1">Windows</button>
+      <button class="sec os" data-os="macos" style="flex:1">macOS</button>
+    </div>
+    <textarea id="payload" rows="8" placeholder="load an OS above to edit its payload…"
+      style="font:13px/1.5 ui-monospace,monospace" disabled></textarea>
+    <div class="row">
+      <span id="plstat" class="sub" style="flex:1;margin:0"></span>
+      <button id="plsave" disabled>Save to board</button>
+    </div>
+  </section>
+
+  <section id="tab-devices" hidden>
+    <div class="row">
+      <button id="list" class="sec" style="flex:1">↻ Refresh</button>
+      <button id="drop" class="warn">Drop links</button>
+    </div>
+    <div id="devices"></div>
+  </section>
 
   <div id="log"></div>
 </div>
@@ -150,7 +164,13 @@ async function send(){
   try { await sendCmd(t); log('sent: ' + t); } catch (e) { log('✖ ' + e.message); }
 }
 $('send').onclick = send;
-$('text').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+$('text').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } });
+
+// Tabs
+for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
+  for (const x of document.querySelectorAll('.tab')) x.classList.toggle('active', x === t);
+  for (const id of ['type','payloads','devices']) $('tab-' + id).hidden = (id !== t.dataset.tab);
+};
 $('list').onclick = () => sendCmd('__BONDS__');
 $('drop').onclick = async () => { if (confirm('Disconnect all current BLE links?')) await sendCmd('__DROP__'); };
 
@@ -160,6 +180,8 @@ function plStat(m){ $('plstat').textContent = m; }
 async function loadPayload(os){
   if (!rxCh || busy) return;
   busy = true; curOS = os;
+  fileBuf = '';                 // reset here, don't rely on the board's fbeg frame
+  $('payload').value = '';
   $('payload').disabled = true; $('plsave').disabled = true;
   plStat('loading ' + os + '…');
   try {
