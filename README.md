@@ -26,7 +26,7 @@ the pairing — after that everything is BLE.
 - `data/` — per-OS payload files (LittleFS, tembed env).
 - `web/control.html` — phone-side control page (Web Bluetooth): type text into the
   PC over BLE, and manage the board's paired devices. Hosted separately at
-  `whitewhidow/hid-ble-poc-web` (also serves the `pair.sh` helper).
+  `whitewhidow/hid-ble-poc` (also serves the `pair.sh` helper).
 
 ## Build / flash
 ```

