@@ -63,25 +63,21 @@ if (-not $p.CanPair) { throw "Device reports it cannot be paired (CanPair = fals
 $custom   = $p.Custom
 $attached = $false
 try {
-    Add-Type -ErrorAction Stop -ReferencedAssemblies @(
-        'System.Runtime',
-        'System.Runtime.InteropServices.WindowsRuntime',
-        'C:\Windows\System32\WinMetadata\Windows.Foundation.winmd',
-        'C:\Windows\System32\WinMetadata\Windows.Devices.winmd'
-    ) -TypeDefinition @"
-using Windows.Devices.Enumeration;
-using Windows.Foundation;
-public static class PairHelper {
-    public static TypedEventHandler<DeviceInformationCustomPairing, DevicePairingRequestedEventArgs> Handler() {
-        return new TypedEventHandler<DeviceInformationCustomPairing, DevicePairingRequestedEventArgs>((s, e) => e.Accept());
-    }
-}
-"@
-    $null = $custom.add_PairingRequested([PairHelper]::Handler())
+    $senderType = [Windows.Devices.Enumeration.DeviceInformationCustomPairing]
+    $argsType   = [Windows.Devices.Enumeration.DevicePairingRequestedEventArgs]
+    $acceptM    = $argsType.GetMethod('Accept', [Type]::EmptyTypes)
+    $dm = New-Object System.Reflection.Emit.DynamicMethod('AcceptPairing', $null, ([Type[]]@($senderType, $argsType)), $true)
+    $il = $dm.GetILGenerator()
+    $il.Emit([System.Reflection.Emit.OpCodes]::Ldarg_1)             # push args
+    $il.Emit([System.Reflection.Emit.OpCodes]::Callvirt, $acceptM)  # args.Accept()
+    $il.Emit([System.Reflection.Emit.OpCodes]::Ret)
+    $tehType = [Windows.Foundation.TypedEventHandler[Windows.Devices.Enumeration.DeviceInformationCustomPairing, Windows.Devices.Enumeration.DevicePairingRequestedEventArgs]]
+    $del = $dm.CreateDelegate($tehType)
+    $null = $custom.add_PairingRequested($del)
     $attached = $true
 }
 catch {
-    Write-Host "  typed handler unavailable ($($_.Exception.Message))"
+    Write-Host "  emit handler failed ($($_.Exception.Message))"
 }
 
 if ($attached) {
