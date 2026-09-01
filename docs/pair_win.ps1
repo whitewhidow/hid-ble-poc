@@ -4,7 +4,7 @@ param(
 )
 
 # PoC-KBD Windows pairing helper (pure WinRT, Windows PowerShell 5.1).
-# Discovers the advertising BLE board and pairs it Just-Works — no PairTool,
+# Discovers the advertising BLE board and pairs it Just-Works -- no PairTool,
 # no DeviceWatcher events, no PowerShell 7. Usage: pair_win.ps1 <MAC>
 
 $ErrorActionPreference = 'Stop'
@@ -18,7 +18,7 @@ Write-Host "Target MAC: $want"
 # WinRT Bluetooth-LE async never completes in an STA console (a known limitation);
 # it needs a multi-threaded apartment. Launch with:  powershell -MTA ...
 if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -eq 'STA') {
-    Write-Warning "Running in STA — WinRT BLE async will hang. Re-run with:  powershell -MTA ..."
+    Write-Warning "Running in STA -- WinRT BLE async will hang. Re-run with:  powershell -MTA ..."
 }
 Write-Host ""
 
