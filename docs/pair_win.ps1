@@ -85,6 +85,27 @@ function Find-EndpointByMac {
     return $null
 }
 
+# Actively discover BLE devices. PairTool /enum-endpoints only lists endpoints
+# Windows has already discovered, so without this the board (advertising fine) is
+# never seen. A DeviceWatcher for the BLE AssociationEndpoint protocol makes
+# Windows scan; keep it running while we poll PairTool.
+function Start-BleDiscovery {
+    try {
+        $null = [Windows.Devices.Enumeration.DeviceInformation, Windows.Devices.Enumeration, ContentType = WindowsRuntime]
+        $bleAqs = 'System.Devices.Aep.ProtocolId:="{bb7bb05e-5972-42b5-94fc-76eaa7084d49}"'
+        $watcher = [Windows.Devices.Enumeration.DeviceInformation]::CreateWatcher(
+            $bleAqs,
+            [string[]]@('System.Devices.Aep.DeviceAddress'),
+            [Windows.Devices.Enumeration.DeviceInformationKind]::AssociationEndpoint)
+        $watcher.Start()
+        return $watcher
+    }
+    catch {
+        Write-Host "BLE discovery watcher unavailable ($($_.Exception.Message)); relying on PairTool alone."
+        return $null
+    }
+}
+
 # ============================================================
 # Remove existing association
 # ============================================================
@@ -122,6 +143,8 @@ if ($null -ne $existing) {
 Write-Host "Scanning for $MAC ..."
 Write-Host ""
 
+$bleWatcher = Start-BleDiscovery
+
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 $endpoint = $null
 
@@ -136,6 +159,8 @@ while ((Get-Date) -lt $deadline) {
     Write-Host "." -NoNewline
     Start-Sleep -Seconds 2
 }
+
+if ($null -ne $bleWatcher) { try { $bleWatcher.Stop() } catch { } }
 
 Write-Host ""
 
