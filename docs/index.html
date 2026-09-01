@@ -74,6 +74,7 @@
   </section>
 
   <section id="tab-devices" hidden>
+    <div class="sub" style="margin:0 0 8px">This board's BLE MAC: <b id="bmac" style="font-family:ui-monospace,monospace">—</b></div>
     <div class="row">
       <button id="list" class="sec" style="flex:1">↻ Refresh</button>
       <button id="drop" class="warn">Drop links</button>
@@ -271,11 +272,13 @@ $('connect').onclick = async () => {
       if (v.startsWith('os:'))      { $('targetos').value = v.slice(3); return; }
       if (v.startsWith('firedelay:')) { $('firedelay').value = v.slice(10); return; }
       if (v.startsWith('ver:'))       { $('fwver').textContent = 'v' + v.slice(4); return; }
+      if (v.startsWith('mac:'))       { $('bmac').textContent = v.slice(4); return; }
       if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
     });
     $('stat').textContent = '✔ connected to ' + (dev.name || 'PoC-KBD');
     $('connect').hidden = true; $('app').hidden = false;
     sendCmd('__BONDS__');                                   // list now
+    setTimeout(() => sendCmd('__MAC__'), 120);              // board BLE MAC
     refreshSettings();                                      // reflect saved settings (spaced out)
     refreshTimer = setInterval(() => { if (!busy) sendCmd('__BONDS__'); }, 3000);   // auto-refresh (paused during file ops)
   } catch (e) { $('stat').textContent = '✖ ' + e.message; }

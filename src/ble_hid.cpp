@@ -382,6 +382,8 @@ static void handleCmd(const char* cmd) {
         size_t sz = 0;
         if (pocFsWriteEnd(sz)) { String r = "fdone:"; r += sz; ctrlNotify(r.c_str()); }
         else ctrlNotify("ferr:close");
+    } else if (!strcmp(cmd, "__MAC__")) {
+        ctrlNotify((String("mac:") + bleHidMac()).c_str());
     } else if (!strcmp(cmd, "__VER__")) {
         ctrlNotify((String("ver:") + netVersion()).c_str());
     } else if (!strcmp(cmd, "__WIFIST__")) {
