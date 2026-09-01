@@ -247,6 +247,7 @@ $('connect').onclick = async () => {
     $('stat').textContent = '✔ connected to ' + (dev.name || 'PoC-KBD');
     $('connect').hidden = true; $('app').hidden = false;
     sendCmd('__BONDS__');                                   // list now
+    sendCmd('__AUTOGET__'); sendCmd('__ABGET__'); sendCmd('__OSGET__'); sendCmd('__WIFIST__');   // reflect saved settings
     refreshTimer = setInterval(() => { if (!busy) sendCmd('__BONDS__'); }, 3000);   // auto-refresh (paused during file ops)
   } catch (e) { $('stat').textContent = '✖ ' + e.message; }
 };
