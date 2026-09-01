@@ -15,8 +15,8 @@
   button:disabled { opacity:.45; }
   input { flex:1; box-sizing:border-box; padding:12px; border-radius:10px; border:1px solid #30363d; background:#161b22; color:#e6edf3; font-size:16px; }
   textarea { width:100%; box-sizing:border-box; padding:12px; border-radius:10px; border:1px solid #30363d; background:#161b22; color:#e6edf3; font-size:16px; resize:vertical; display:block; margin-bottom:10px; }
-  .tabs { display:flex; gap:6px; margin:6px 0 14px; }
-  .tabs button { flex:1; }
+  .tabs { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 14px; }
+  .tabs button { flex:1 1 auto; }
   .tab { background:#161b22; color:#8b949e; border:1px solid #30363d; padding:11px 8px; }
   .tab.active { background:#22d3e0; color:#04181b; }
   .ref h3 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:#22d3e0; margin:16px 0 4px; }
@@ -46,7 +46,9 @@
     <button class="tab active" data-tab="type">Type</button>
     <button class="tab" data-tab="payloads">Payloads</button>
     <button class="tab" data-tab="devices">Devices</button>
-    <button class="tab" data-tab="ota">Update</button>
+    <button class="tab" data-tab="wifi">WiFi</button>
+    <button class="tab" data-tab="update">Update</button>
+    <button class="tab" data-tab="options">Options</button>
     <button class="tab" data-tab="help">Commands</button>
   </div>
 
@@ -79,9 +81,8 @@
     <div id="devices"></div>
   </section>
 
-  <section id="tab-ota" hidden>
-    <div class="sub" style="margin:0 0 8px">Give the board WiFi, then let it update its own firmware over the air from the latest GitHub release. T-Embed only.</div>
-    <div class="sub" style="margin:0 0 8px">Firmware: <b id="fwver">—</b></div>
+  <section id="tab-wifi" hidden>
+    <div class="sub" style="margin:0 0 8px">WiFi is only used for over-the-air updates. It stays off until you tap Connect — it never auto-connects at boot.</div>
     <div id="wifiStat" class="keys" style="margin-bottom:10px">wifi: —</div>
     <input id="ssid" placeholder="WiFi SSID" autocomplete="off" style="margin-bottom:8px">
     <input id="wpass" type="password" placeholder="WiFi password" autocomplete="off" style="margin-bottom:8px">
@@ -91,14 +92,19 @@
       <button id="wifiClear" class="warn">Forget</button>
       <button id="wifiRefresh" class="sec">↻</button>
     </div>
-    <div class="sub" style="margin:0 0 4px">WiFi stays off until you tap Connect — it doesn't auto-connect at boot.</div>
-    <h2>Firmware</h2>
+  </section>
+
+  <section id="tab-update" hidden>
+    <div class="sub" style="margin:0 0 8px">Firmware: <b id="fwver">—</b> &nbsp;·&nbsp; Latest: <b id="fwlatest">—</b> <span id="fwnew" style="color:#3fb950;font-weight:600"></span></div>
+    <div class="sub" style="margin:0 0 8px">The board self-updates over WiFi from the latest GitHub release (T-Embed only). Connect WiFi first (WiFi tab).</div>
     <div class="row">
       <span id="otaStat" class="sub" style="flex:1;margin:0">idle</span>
       <button id="otaRun" class="warn">Update firmware</button>
     </div>
-    <div class="sub" style="margin:4px 0 0">The board downloads the newest release, writes the spare slot, and reboots into it. Keep it powered — don't unplug during the update.</div>
-    <h2>Options</h2>
+    <div class="sub" style="margin:4px 0 0">It downloads the newest release, writes the spare slot, and reboots into it. Keep it powered — don't unplug during the update.</div>
+  </section>
+
+  <section id="tab-options" hidden>
     <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:6px 0 0">
       <input type="checkbox" id="autorun" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0">
       <span style="flex:1">Autorun — selecting an OS arms it (auto-fires on plug) instead of firing now</span>
@@ -285,9 +291,22 @@ $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey
 // Tabs
 for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
   for (const x of document.querySelectorAll('.tab')) x.classList.toggle('active', x === t);
-  for (const id of ['type','payloads','devices','ota','help']) $('tab-' + id).hidden = (id !== t.dataset.tab);
-  if (t.dataset.tab === 'ota') refreshSettings();
+  for (const id of ['type','payloads','devices','wifi','update','options','help']) $('tab-' + id).hidden = (id !== t.dataset.tab);
+  if (['wifi','update','options'].includes(t.dataset.tab)) refreshSettings();
+  if (t.dataset.tab === 'update') checkLatest();
 };
+
+let latestVer = '';
+async function checkLatest(){
+  try {
+    const r = await fetch('https://api.github.com/repos/whitewhidow/hid-ble-poc/releases/latest', { cache: 'no-store' });
+    const j = await r.json();
+    latestVer = (j.tag_name || '').replace(/^v/, '');
+    $('fwlatest').textContent = latestVer ? ('v' + latestVer) : 'unknown';
+    const cur = ($('fwver').textContent || '').replace(/^v/, '');
+    $('fwnew').textContent = (latestVer && cur && cur !== '—' && latestVer !== cur) ? '  ⬆ update available' : '';
+  } catch (e) { $('fwlatest').textContent = 'check failed'; }
+}
 
 // ---- WiFi / OTA ----------------------------------------------------------
 function renderWifi(v){
@@ -329,7 +348,7 @@ $('wifiClear').onclick = async () => {
 $('otaRun').onclick = async () => {
   if (!rxCh || busy || !confirm('Download the latest firmware and reboot into it? Keep the board powered.')) return;
   busy = true; $('otaRun').disabled = true; $('otaStat').textContent = 'starting…';
-  try { await sendCmd('__OTA__'); } catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaRun').disabled = false; }
+  try { await sendCmd('__OTA__' + (latestVer ? ':' + latestVer : '')); } catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaRun').disabled = false; }
 };
 $('list').onclick = () => sendCmd('__BONDS__');
 $('drop').onclick = async () => { if (confirm('Disconnect all current BLE links?')) await sendCmd('__DROP__'); };

@@ -104,6 +104,28 @@ void dispShow(const char* header, const char* body, uint32_t color) {
     lcd.setTextSize(2); lcd.setCursor(8, 48); lcd.print(body);
 }
 
+// Centered header + (multi-line) body — used for the OTA screen.
+void dispCenter(const char* header, const char* body, uint32_t color) {
+    lcd.fillScreen(0x000000u);
+    lcd.setTextWrap(false);
+    int W = lcd.width();
+    lcd.setTextColor(lcd.color888((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF), 0x000000u);
+    lcd.setTextSize(3);
+    { int tw = lcd.textWidth(header); int x = (W - tw) / 2; if (x < 0) x = 0; lcd.setCursor(x, 12); lcd.print(header); }
+    lcd.setTextColor(lcd.color888(0xC8, 0xD2, 0xDA), 0x000000u);
+    lcd.setTextSize(2);
+    String b = body; int start = 0, y = 60;
+    while (true) {
+        int nl = b.indexOf('\n', start);
+        String ln = (nl < 0) ? b.substring(start) : b.substring(start, nl);
+        int tw = lcd.textWidth(ln.c_str()); int x = (W - tw) / 2; if (x < 0) x = 0;
+        lcd.setCursor(x, y); lcd.print(ln);
+        y += 22;
+        if (nl < 0) break;
+        start = nl + 1;
+    }
+}
+
 // Long command at small font (wraps to fit), for showing the one-line payload.
 void dispCmd(const char* header, const char* cmd) {
     lcd.fillScreen(0x000000u);

@@ -316,12 +316,15 @@ void bleHidDropAll() {
 //   __BONDS__            -> reply "bonds:0=aa:bb..;1=cc:dd.." (per-device list)
 //   __FORGET__:<index>   -> delete that ONE bond (+ disconnect it if connected)
 //   __FORGETALL__        -> wipe every bond
-// OTA progress -> LCD + a throttled BLE notify (every ~5%, plus 0/100).
+static char g_otaVer[16] = "";   // target version the phone told us we're installing
+
+// OTA progress -> LCD (with the target version) + a throttled BLE notify.
 static void otaProgress(int pct, const char* msg) {
     static int last = -1;
     if (pct == last) return;
     if (pct == 0 || pct == 100 || pct / 5 != last / 5) {
-        char b[72]; snprintf(b, sizeof(b), "%d%%\n%s", pct, msg); dispShow("OTA UPDATE", b, 0xF7C948);
+        char hdr[24]; snprintf(hdr, sizeof(hdr), g_otaVer[0] ? "OTA v%s" : "OTA UPDATE%s", g_otaVer);
+        char b[72]; snprintf(b, sizeof(b), "%d%%\n%s", pct, msg); dispCenter(hdr, b, 0xF7C948);
         char n[80]; snprintf(n, sizeof(n), "ota:%d %s", pct, msg); ctrlNotify(n);
     }
     last = pct;
@@ -392,7 +395,9 @@ static void handleCmd(const char* cmd) {
         netClearCreds(); ctrlNotify("wifi:cleared");
     } else if (!strcmp(cmd, "__WIFICONN__")) {
         netConnect(); ctrlNotify(netStatus().c_str());
-    } else if (!strcmp(cmd, "__OTA__")) {
+    } else if (!strncmp(cmd, "__OTA__", 7)) {
+        g_otaVer[0] = 0;
+        if (cmd[7] == ':') { strncpy(g_otaVer, cmd + 8, sizeof(g_otaVer) - 1); g_otaVer[sizeof(g_otaVer) - 1] = 0; }
         ctrlNotify("ota:0 starting");
         String r = netOtaUpdate(otaProgress);
         if (r == "ok") { ctrlNotify("ota:100 rebooting"); delay(500); ESP.restart(); }
