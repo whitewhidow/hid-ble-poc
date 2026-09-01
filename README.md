@@ -8,72 +8,98 @@ host into pairing the board's **own BLE HID keyboard** (Just Works), then it
 persists as a **wireless** keyboard over Bluetooth. USB is only used to bootstrap
 the pairing — after that everything is BLE.
 
-## One codebase, two boards (build flags)
+## Boards
 
-| env | board | role |
-|-----|-------|------|
-| `tembed` | LilyGo T-Embed CC1101 (ESP32-S3) | USB HID + BLE HID (full flow) |
-| `waveshare` | Waveshare ESP32-C5-LCD-1.47 | BLE HID only (C5 has no USB-OTG; USB stubbed) |
+Both targets are ESP32-S3 (native USB → USB-HID, plus BLE-HID), selected by build
+flags and sharing one firmware:
 
-- `POC_HAS_USB_HID` gates the USB side; `POC_BOARD_*` picks display pins + button.
+| env | board | LCD | battery | notes |
+|-----|-------|-----|---------|-------|
+| `tembed`  | LilyGo T-Embed CC1101 | ST7789 320×170 | yes (BQ27220) | encoder button |
+| `tdongle` | LilyGo T-Dongle S3    | ST7735S 80×160 | no | plugs straight into USB-A · **pins UNVERIFIED until first boot** |
+
+- `POC_BOARD_*` picks display pins/panel + button; `POC_HAS_USB_HID` gates the USB side.
+- `display.cpp` parameterises panel type/size/offsets/frequency per board.
 - Shared `ble_hid.cpp` (NimBLE 2.x HID keyboard **+** a custom control service).
-- On the S3, the USB side does **LED-fingerprint OS detection** then types the
-  pairing stager; the payload lives in `data/<os>.txt` (our own tiny
-  `GUI/STRING/ENTER/DELAY` format, on LittleFS).
 
-## Pieces
-- `src/` — firmware.
-- `data/` — per-OS payload files (LittleFS, tembed env).
-- `web/control.html` — phone-side control page (Web Bluetooth): type text into the
-  PC over BLE, and manage the board's paired devices. Hosted separately at
-  `whitewhidow/hid-ble-poc` (also serves the `pair.sh` helper).
+## What it does
+
+- **Start menu** (single button — click = next, hold = select): **Autodetect**
+  (LED-fingerprint the host OS over USB), **Linux / Windows / macOS** (force one),
+  and **Sleep** (deep sleep; a button tap wakes it and boots fresh).
+- **Payloads** live on LittleFS as `data/<os>.txt` (tiny `GUI/STRING/ENTER/DELAY/
+  CTRLALT` format) and are typed over USB when you fire an OS.
+- **Boot splash** shows the firmware version + board; the **status bar** shows the
+  PC/PH/USB links, the connection count, and a **battery gauge** (T-Embed only).
+- **AUTORUN** (arm on select, then auto-fire the payload the moment it's plugged
+  into a host) is a **runtime setting** stored in NVS — toggle it from the phone,
+  no reflash.
+
+## Phone control page — `docs/index.html`
+
+A Web Bluetooth page (Chrome/Edge, https/localhost), served from GitHub Pages.
+Connect to `PoC-KBD`, then use the tabs:
+
+- **Type** — send text to the paired PC over BLE-HID. Each line can be a command
+  in the **Evil Crow Cable "Wind"** syntax (`Print`/`PrintLine`/`Press`/`Delay`/
+  `Gui*`/`RunWin`/`RunNix`/…); plain lines are typed literally. Full list in the
+  **Commands** tab. (Network `Shell*`/`ServerConnect` and `DetectOS` are recognised
+  but skipped — no TCP/LED path over BLE.)
+- **Payloads** — load/edit the per-OS payload files and save them straight to the
+  board's filesystem (no reflash).
+- **Devices** — list / forget the board's BLE bonds; drop all links.
+- **Update** — give the board WiFi and let it self-update over the air (see below);
+  also the AUTORUN toggle.
+- **Commands** — the full keystroke-command reference.
 
 ## Build / flash
 
 ```
-pio run -e waveshare -t upload                 # C5: builds + flashes, auto-reset (no battery)
-
-pio run -e tembed   -t buildfs                  # build the LittleFS payload image (data/ -> littlefs.bin)
-pio run -e tembed   -t uploadfs                 # flash the payloads   (needed after editing data/*.txt)
-pio run -e tembed   -t upload                   # flash the firmware
+pio run -e tembed  -t buildfs     # build the LittleFS payload image (data/ -> littlefs.bin)
+pio run -e tembed  -t uploadfs    # flash the payloads (only after editing data/*.txt)
+pio run -e tembed  -t upload      # flash the firmware
 ```
 
-The **C5 (waveshare)** has no battery and auto-resets over USB-Serial-JTAG, so a
-plain `-t upload` just works.
+(swap `-e tembed` for `-e tdongle` for the dongle.)
 
-### Flashing the T-Embed manually (the battery gotcha)
+### Entering download mode
 
-The **T-Embed CC1101** runs off its battery and its USB auto-reset (RTS/DTR) does
-**not** reach the boot straps, so esptool can't put it into download mode on its
-own. You do it by hand:
+Neither board's USB auto-reset reliably reaches the boot straps while the app
+holds native USB, so enter the bootloader by hand:
 
-1. **Enter download mode:** hold **BOOT** (the encoder push), tap **RST**, then
-   release BOOT. The board is now in the USB download bootloader.
-   - Replugging USB does **nothing** here — the battery keeps the chip powered.
-     Only the **RST** button actually resets the SoC (it pulls EN/CHIP_PU).
-2. **Flash filesystem first, then app** (both connect while it's in download mode;
-   on this board the post-flash "hard reset via RTS" usually doesn't fire, so it
-   stays in the bootloader and you can flash again without repeating step 1):
-   ```
-   pio run -e tembed -t uploadfs      # only if data/*.txt changed
-   pio run -e tembed -t upload
-   ```
-3. **Boot the new firmware:** tap **RST** once. (Don't rely on esptool's auto
-   hard-reset on this board.)
+- **T-Embed** — hold **BOOT** (encoder push), tap **RST**, release BOOT. It runs
+  off its battery, so *replugging USB does nothing* — only **RST** resets the SoC.
+  Flash **filesystem first, then app** (both connect while it's in download mode;
+  the post-flash reset usually leaves it in the bootloader, so you can flash again
+  without repeating this). Then tap **RST** to boot.
+- **T-Dongle S3** (no battery) — hold **BOOT** while plugging it into USB (a
+  power-on with GPIO0 low → download mode), then flash. *(UNVERIFIED.)*
 
-> Do **not** try to trigger download mode from firmware (`FORCE_DOWNLOAD_BOOT`).
-> The ROM doesn't self-clear that flag and this board can't be cleanly
-> power-cycled without RST, so it can strand you in download mode needing a
-> battery pull. The BOOT+RST button combo is the safe, deterministic way in.
+> Do **not** trigger download mode from firmware (`FORCE_DOWNLOAD_BOOT`): the ROM
+> doesn't self-clear that flag and the T-Embed can't be cleanly power-cycled
+> without RST, so it can strand you in download mode needing a battery pull. The
+> BOOT+RST combo is the safe, deterministic way in.
 
-`-t uploadfs` is only needed when the `data/*.txt` payloads change; a firmware-only
-edit just needs `-t upload`.
+## Over-the-air self-update
+
+The firmware can update itself over WiFi (A/B OTA partitions):
+
+1. In the phone's **Update** tab, save your **WiFi** SSID + password (stored in
+   NVS; the board reconnects on boot).
+2. Tap **Update firmware** — the board downloads the latest release, writes the
+   spare OTA slot, and reboots into it (progress on phone + LCD).
+
+Releases are cut by tagging: bump `POC_VERSION` in `src/version.h`, then
+`git tag vX.Y.Z && git push --tags`. CI (`release.yml`) builds each board and
+publishes `hid-ble-poc-app-<board>.bin` to the GitHub release; the board pulls
+`releases/latest/download/hid-ble-poc-app-<board>.bin` (see `src/version.h`).
 
 ## CI
 
-`.github/workflows/build.yml` builds **both** envs on every push/PR and uploads,
-per board, the firmware `.bin` (+ `bootloader.bin`, `partitions.bin`, `.elf`) and
-the **LittleFS image** as downloadable artifacts — so you can grab a prebuilt
-`tembed-firmware.bin` / `tembed-littlefs.bin` without a local toolchain.
+`.github/workflows/build.yml` builds every env on push/PR and uploads, per board,
+the firmware `.bin` (+ `bootloader.bin`, `partitions.bin`, `.elf`) and the
+**LittleFS image** as artifacts — a prebuilt image without a local toolchain.
+
+---
 
 Educational PoC — use only on hardware and hosts you own.
