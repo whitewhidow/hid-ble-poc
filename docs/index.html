@@ -17,8 +17,13 @@
   textarea { width:100%; box-sizing:border-box; padding:12px; border-radius:10px; border:1px solid #30363d; background:#161b22; color:#e6edf3; font-size:16px; resize:vertical; display:block; margin-bottom:10px; }
   .tabs { display:flex; gap:6px; margin:6px 0 14px; }
   .tabs button { flex:1; }
-  .tab { background:#161b22; color:#8b949e; border:1px solid #30363d; }
+  .tab { background:#161b22; color:#8b949e; border:1px solid #30363d; padding:11px 8px; }
   .tab.active { background:#22d3e0; color:#04181b; }
+  .ref h3 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:#22d3e0; margin:16px 0 4px; }
+  .ref .c { padding:6px 0; border-bottom:1px solid #161b22; }
+  .ref .c code { color:#7ee787; font:12px/1.5 ui-monospace,monospace; word-break:break-word; }
+  .ref .c span { display:block; color:#8b949e; font-size:12.5px; margin-top:2px; }
+  .ref .keys { font:12px/1.7 ui-monospace,monospace; color:#adbac7; background:#161b22; border:1px solid #21262d; border-radius:8px; padding:8px 10px; word-break:break-word; }
   .row { display:flex; gap:8px; margin:10px 0; align-items:center; }
   h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:#8b949e; margin:20px 0 6px; }
   .dev { display:flex; justify-content:space-between; align-items:center; background:#161b22; border:1px solid #21262d; border-radius:9px; padding:9px 11px; margin:6px 0; gap:8px; }
@@ -41,6 +46,7 @@
     <button class="tab active" data-tab="type">Type</button>
     <button class="tab" data-tab="payloads">Payloads</button>
     <button class="tab" data-tab="devices">Devices</button>
+    <button class="tab" data-tab="help">Commands</button>
   </div>
 
   <section id="tab-type">
@@ -70,6 +76,50 @@
       <button id="drop" class="warn">Drop links</button>
     </div>
     <div id="devices"></div>
+  </section>
+
+  <section id="tab-help" hidden>
+    <div class="sub" style="margin:0 0 4px">Each line of the <b>Type</b> box is one command — Evil Crow Cable "Wind" syntax, run over BLE-HID. A line that isn't a command is typed literally. Case-sensitive.</div>
+    <div class="ref">
+      <h3>Type &amp; timing</h3>
+      <div class="c"><code>Print &lt;text&gt;</code><span>Type text, no Enter.</span></div>
+      <div class="c"><code>PrintLine &lt;text&gt;</code><span>Type text, then Enter.</span></div>
+      <div class="c"><code>STRING &lt;text&gt;</code><span>Same as Print (alias). <code>{MAC}</code> expands to the board's BLE MAC.</span></div>
+      <div class="c"><code>ENTER</code><span>Press Enter.</span></div>
+      <div class="c"><code>Delay &lt;ms&gt;</code><span>Wait this many milliseconds.</span></div>
+
+      <h3>Keys</h3>
+      <div class="c"><code>Press &lt;key&gt;</code><span>Hold a key down. Stack several, then <code>Release</code> — e.g. <code>Press KEY_LEFT_CTRL</code> / <code>Press KEY_LEFT_ALT</code> / <code>Press KEY_DELETE</code> / <code>Release</code>.</span></div>
+      <div class="c"><code>PressRelease &lt;key&gt;</code><span>Tap a key once (press + release).</span></div>
+      <div class="c"><code>Release</code><span>Release everything currently held.</span></div>
+      <div class="c"><code>CTRLALT &lt;key&gt;</code><span>Tap Ctrl+Alt+&lt;key&gt; (alias).</span></div>
+      <div class="c"><code>GUI &lt;key&gt;</code> / <code>GUI SPACE</code><span>Tap Super/Win+&lt;key&gt; (alias).</span></div>
+      <div style="margin:6px 0 2px;color:#8b949e;font-size:12.5px">Key names (also any single character, e.g. <code>Press a</code>):</div>
+      <div class="keys">KEY_ENTER KEY_ESC KEY_BACKSPACE KEY_TAB KEY_SPACE KEY_DELETE KEY_INSERT KEY_HOME KEY_END KEY_PAGE_UP KEY_PAGE_DOWN KEY_UP_ARROW KEY_DOWN_ARROW KEY_LEFT_ARROW KEY_RIGHT_ARROW KEY_CAPS_LOCK KEY_PRINT_SCREEN KEY_SCROLL_LOCK KEY_PAUSE KEY_NUM_LOCK KEY_MENU KEY_F1…KEY_F12 KEY_LEFT_CTRL KEY_LEFT_SHIFT KEY_LEFT_ALT KEY_LEFT_GUI KEY_RIGHT_CTRL KEY_RIGHT_SHIFT KEY_RIGHT_ALT KEY_RIGHT_GUI</div>
+
+      <h3>Shortcuts</h3>
+      <div class="c"><code>Gui</code><span>Tap the Super/Win key.</span></div>
+      <div class="c"><code>GuiR</code><span>Win+R — Windows Run dialog.</span></div>
+      <div class="c"><code>GuiSpace</code><span>Cmd+Space — macOS Spotlight.</span></div>
+      <div class="c"><code>AltF2</code><span>Alt+F2 — Linux run dialog.</span></div>
+      <div class="c"><code>CtrlAltT</code><span>Ctrl+Alt+T — open a Linux terminal.</span></div>
+
+      <h3>Run (open a launcher, wait, type + Enter)</h3>
+      <div class="c"><code>RunWin &lt;cmd&gt;</code><span>Win+R, then the command. Windows.</span></div>
+      <div class="c"><code>RunNix &lt;cmd&gt;</code><span>Ctrl+Alt+T, then the command. Linux.</span></div>
+      <div class="c"><code>RunMac &lt;cmd&gt;</code><span>Spotlight, then the command. macOS.</span></div>
+      <div class="c"><code>RunLauncher &lt;cmd&gt;</code><span>Alt+F2, then the command.</span></div>
+      <div class="c"><code>RunCmdAdmin</code><span>Open an elevated Command Prompt (Windows).</span></div>
+      <div class="c"><code>RunPowershellAdmin</code><span>Open an elevated PowerShell (Windows).</span></div>
+
+      <h3>Comments</h3>
+      <div class="c"><code>REM &lt;text&gt;</code> / <code>## &lt;text&gt;</code><span>Ignored — a comment.</span></div>
+
+      <h3>Not available over BLE</h3>
+      <div class="c"><code>DetectOS</code><span>Needs the USB LED fingerprint — recognised and skipped.</span></div>
+      <div class="c"><code>ShellWin / ShellNix / ShellMac / ServerConnect</code><span>Need a TCP reverse-shell bridge — recognised and skipped.</span></div>
+      <div class="c"><code>WinPrint / WinPrintLine</code><span>Aliased to Print / PrintLine (no Alt+numpad unicode).</span></div>
+    </div>
   </section>
 
   <div id="log"></div>
@@ -169,7 +219,7 @@ $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey
 // Tabs
 for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
   for (const x of document.querySelectorAll('.tab')) x.classList.toggle('active', x === t);
-  for (const id of ['type','payloads','devices']) $('tab-' + id).hidden = (id !== t.dataset.tab);
+  for (const id of ['type','payloads','devices','help']) $('tab-' + id).hidden = (id !== t.dataset.tab);
 };
 $('list').onclick = () => sendCmd('__BONDS__');
 $('drop').onclick = async () => { if (confirm('Disconnect all current BLE links?')) await sendCmd('__DROP__'); };
