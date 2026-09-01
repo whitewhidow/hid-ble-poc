@@ -73,12 +73,13 @@ void dispBegin() {
     lcd.fillScreen(0x000000u);
 }
 
-void dispOff() { lcd.setBrightness(0); lcd.sleep(); }
-void dispOn()  { lcd.wakeup(); lcd.setBrightness(200); }
+void dispOff() { Serial.println("[disp] OFF"); lcd.setBrightness(0); lcd.sleep(); }
+void dispOn()  { Serial.println("[disp] ON");  lcd.wakeup(); lcd.setBrightness(200); }
 
 // Selectable list. Each row is drawn at a FIXED x so nothing shifts as the
 // selection moves; the selected row is cyan (with a ">" marker), the rest gray.
 void dispMenu(const char* title, const char* const* items, int count, int sel) {
+    Serial.printf("[disp] menu sel=%d\n", sel);
     lcd.fillScreen(0x000000u);
     lcd.setTextWrap(false);
     lcd.setTextColor(lcd.color888(0x22, 0xD3, 0xE0), 0x000000u);
@@ -94,6 +95,7 @@ void dispMenu(const char* title, const char* const* items, int count, int sel) {
 }
 
 void dispShow(const char* header, const char* body, uint32_t color) {
+    Serial.printf("[disp] show '%s'\n", header);
     lcd.fillScreen(0x000000u);
     lcd.setTextWrap(true);
     lcd.setTextColor(lcd.color888((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF), 0x000000u);

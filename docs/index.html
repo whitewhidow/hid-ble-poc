@@ -81,6 +81,7 @@
 
   <section id="tab-ota" hidden>
     <div class="sub" style="margin:0 0 8px">Give the board WiFi, then let it update its own firmware over the air from the latest GitHub release. T-Embed only.</div>
+    <div class="sub" style="margin:0 0 8px">Firmware: <b id="fwver">—</b></div>
     <div id="wifiStat" class="keys" style="margin-bottom:10px">wifi: —</div>
     <input id="ssid" placeholder="WiFi SSID" autocomplete="off" style="margin-bottom:8px">
     <input id="wpass" type="password" placeholder="WiFi password" autocomplete="off" style="margin-bottom:8px">
@@ -202,7 +203,7 @@ function waitFor(match, timeout=4000){
 // The board has a single command slot processed once per loop, so back-to-back
 // queries overwrite each other — space them out.
 async function refreshSettings(){
-  for (const c of ['__AUTOGET__','__ABGET__','__OSGET__','__FDGET__','__WIFIST__']) {
+  for (const c of ['__VER__','__AUTOGET__','__ABGET__','__OSGET__','__FDGET__','__WIFIST__']) {
     sendCmd(c); await new Promise(r => setTimeout(r, 170));
   }
 }
@@ -263,6 +264,7 @@ $('connect').onclick = async () => {
       if (v.startsWith('armboot:')) { $('armboot').checked = (v.slice(8) === '1'); return; }
       if (v.startsWith('os:'))      { $('targetos').value = v.slice(3); return; }
       if (v.startsWith('firedelay:')) { $('firedelay').value = v.slice(10); return; }
+      if (v.startsWith('ver:'))       { $('fwver').textContent = 'v' + v.slice(4); return; }
       if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
     });
     $('stat').textContent = '✔ connected to ' + (dev.name || 'PoC-KBD');

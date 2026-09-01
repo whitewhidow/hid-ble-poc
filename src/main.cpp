@@ -140,6 +140,10 @@ void setup() {
     pinMode(BTN, INPUT_PULLUP);
 #if defined(POC_BOARD_TEMBED)
     pinMode(15, OUTPUT); digitalWrite(15, HIGH);   // BOARD_PWR_EN: power the display rail
+    // Deselect the other devices on the SHARED display SPI bus, or their floating
+    // CS lines corrupt the display's command stream (random invert/blank glitches).
+    pinMode(12, OUTPUT); digitalWrite(12, HIGH);   // CC1101 radio CS
+    pinMode(13, OUTPUT); digitalWrite(13, HIGH);   // microSD CS
 #endif
     Serial.begin(115200);
     dispBegin();
@@ -166,7 +170,7 @@ void loop() {
 
     bool b = digitalRead(BTN);
     if (b == LOW && lastBtn == HIGH) { pressStart = millis(); firedLong = false; }
-    if (b == LOW && !firedLong && millis() - pressStart > 800) { firedLong = true; selectOS(sel); }  // HOLD = select
+    if (b == LOW && !firedLong && millis() - pressStart > 800) { firedLong = true; Serial.printf("[btn] hold-select sel=%d\n", sel); selectOS(sel); }  // HOLD = select
     if (b == HIGH && lastBtn == LOW) {                                                                // release
         uint32_t held = millis() - pressStart;
         if (!firedLong && held > 40 && held < 700) {                                                  // CLICK
