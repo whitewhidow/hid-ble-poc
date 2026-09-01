@@ -14,6 +14,12 @@ if ($want -notmatch '^[0-9A-F]{12}$') { throw "Invalid Bluetooth MAC address: $M
 
 Write-Host "PowerShell: $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
 Write-Host "Target MAC: $want"
+
+# WinRT Bluetooth-LE async never completes in an STA console (a known limitation);
+# it needs a multi-threaded apartment. Launch with:  powershell -MTA ...
+if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -eq 'STA') {
+    Write-Warning "Running in STA — WinRT BLE async will hang. Re-run with:  powershell -MTA ..."
+}
 Write-Host ""
 
 # ---- WinRT plumbing --------------------------------------------------------

