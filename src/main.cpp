@@ -111,13 +111,14 @@ static void fireOS(int menuIdx) {
 static void deepSleep() {
     dispShow("SLEEP", "press the button\nto wake", 0x8A97A2);
     delay(700);
+    while (digitalRead(BTN) == LOW) delay(10);     // wait for the select-hold to release
     dispOff();                                     // backlight off + panel sleep
-#if defined(POC_BOARD_TEMBED)
-    digitalWrite(15, LOW);                         // drop the T-Embed display rail
-#endif
     rtc_gpio_pullup_en(GPIO_NUM_0); rtc_gpio_pulldown_dis(GPIO_NUM_0);
     esp_sleep_enable_ext1_wakeup(1ULL << 0, ESP_EXT1_WAKEUP_ANY_LOW);
     esp_deep_sleep_start();
+    // Only reached if deep sleep didn't engage (e.g. USB attached keeps it awake):
+    // bring the display back so we never sit dark with the app still running.
+    dispOn(); drawMenu();
 }
 
 // Select the highlighted item. Manual (default): fire now. Autorun: arm + wait.

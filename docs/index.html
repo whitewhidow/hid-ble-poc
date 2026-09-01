@@ -359,13 +359,15 @@ async function savePayload(){
   plStat('saving ' + curOS + '… (' + enc.length + ' bytes)');
   try {
     await sendReliable(new TextEncoder().encode('__PUT__:' + curOS));
-    await waitFor(v => v === 'wok' || v.startsWith('ferr'));
+    let a = await waitFor(v => v === 'wok' || v.startsWith('ferr'));
+    if (a.startsWith('ferr')) throw new Error(a + ' (board filesystem broken — reflash the FS)');
     for (let i = 0; i < enc.length; i += 160) {
       const slice = enc.slice(i, i + 160);
       const buf = new Uint8Array(pfx.length + slice.length);
       buf.set(pfx, 0); buf.set(slice, pfx.length);
       await sendReliable(buf);
-      await waitFor(v => v === 'wok' || v.startsWith('ferr'));
+      a = await waitFor(v => v === 'wok' || v.startsWith('ferr'));
+      if (a.startsWith('ferr')) throw new Error(a);
     }
     await sendReliable(new TextEncoder().encode('__WEND__'));
     const r = await waitFor(v => v.startsWith('fdone:') || v.startsWith('ferr'));

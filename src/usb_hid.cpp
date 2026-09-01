@@ -198,7 +198,12 @@ static void seedPayload(const char* path, const char* def) {
 }
 
 void usbHidBegin() {
-    LittleFS.begin(true);
+    // Mount LittleFS; if it won't mount OR won't accept a write (corrupt FS — the
+    // cause of vanished payloads that seeding couldn't fix), reformat it clean.
+    if (!LittleFS.begin(true)) { LittleFS.format(); LittleFS.begin(true); }
+    File t = LittleFS.open("/.wtest", "w");
+    if (!t) { LittleFS.format(); LittleFS.begin(true); }
+    else    { t.close(); LittleFS.remove("/.wtest"); }
     seedPayload("/linux.txt",   DEF_LINUX);      // recreate any payload lost to an OTA / empty FS
     seedPayload("/windows.txt", DEF_WINDOWS);
     seedPayload("/macos.txt",   DEF_MACOS);

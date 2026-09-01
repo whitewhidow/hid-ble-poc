@@ -74,6 +74,7 @@ void dispBegin() {
 }
 
 void dispOff() { lcd.setBrightness(0); lcd.sleep(); }
+void dispOn()  { lcd.wakeup(); lcd.setBrightness(200); }
 
 // Selectable list. Each row is drawn at a FIXED x so nothing shifts as the
 // selection moves; the selected row is cyan (with a ">" marker), the rest gray.
