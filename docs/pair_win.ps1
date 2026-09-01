@@ -45,16 +45,16 @@ Write-Host ""
 # Helpers
 # ============================================================
 
-# Await a WinRT IAsyncOperation without System.WindowsRuntimeSystemExtensions
-# (not loaded in Windows PowerShell 5.1). GetResults() throws while the op is still
-# running, so just retry it, time-bounded so it can never hang.
-function Await($op) {
-    $deadline = (Get-Date).AddSeconds(10)
-    while ((Get-Date) -lt $deadline) {
-        try { return $op.GetResults() }
-        catch { Start-Sleep -Milliseconds 100 }
-    }
-    throw "WinRT async did not complete in time"
+# Await a WinRT IAsyncOperation from Windows PowerShell 5.1 via AsTask. The
+# extension type lives in System.Runtime.WindowsRuntime, which must be loaded first.
+Add-Type -AssemblyName System.Runtime.WindowsRuntime -ErrorAction SilentlyContinue
+function Await($op, $resultType) {
+    $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() |
+        Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' } |
+        Select-Object -First 1
+    $task = $asTask.MakeGenericMethod($resultType).Invoke($null, @($op))
+    if (-not $task.Wait(15000)) { throw "WinRT async timed out" }
+    return $task.Result
 }
 
 # Find the BLE association-endpoint for a MAC. FindAllAsync actively DISCOVERS BLE
@@ -69,7 +69,8 @@ function Find-EndpointByMac {
         $devices = Await ([Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync(
                 $bleAqs,
                 [string[]]@('System.Devices.Aep.DeviceAddress'),
-                [Windows.Devices.Enumeration.DeviceInformationKind]::AssociationEndpoint))
+                [Windows.Devices.Enumeration.DeviceInformationKind]::AssociationEndpoint)
+        ) ([Windows.Devices.Enumeration.DeviceInformationCollection])
 
         foreach ($d in $devices) {
             $addr = [string]$d.Properties['System.Devices.Aep.DeviceAddress']
