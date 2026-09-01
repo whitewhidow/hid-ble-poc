@@ -37,6 +37,20 @@
     <button id="send">Send</button>
   </div>
 
+  <h2>OS payloads</h2>
+  <div class="sub" style="margin:0 0 8px">Edit the keystroke payload the board types on the PC, per OS. Saved straight to the board's filesystem — no reflash. (T-Embed only.)</div>
+  <div class="row" id="osrow">
+    <button class="sec os" data-os="linux" style="flex:1">Linux</button>
+    <button class="sec os" data-os="windows" style="flex:1">Windows</button>
+    <button class="sec os" data-os="macos" style="flex:1">macOS</button>
+  </div>
+  <textarea id="payload" rows="7" placeholder="load an OS above to edit its payload…"
+    style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font:13px/1.5 ui-monospace,monospace;resize:vertical" disabled></textarea>
+  <div class="row">
+    <span id="plstat" class="sub" style="flex:1;margin:0"></span>
+    <button id="plsave" disabled>Save to board</button>
+  </div>
+
   <h2>Board devices</h2>
   <div class="row">
     <button id="list" class="sec" style="flex:1">↻ Refresh</button>
@@ -55,12 +69,28 @@ const $ = id => document.getElementById(id);
 function log(m){ const e=$('log'); e.textContent += m+'\n'; e.scrollTop = e.scrollHeight; }
 
 let rxCh = null, refreshTimer = null;
+let busy = false;              // a file load/save is in progress -> pause other traffic
+let curOS = null;             // OS whose payload is loaded in the textarea
+let fileBuf = '';             // accumulates fdat: chunks during a load
+let waiter = null;            // {match, resolve} for a pending board reply
 
 async function sendCmd(s){
   if(!rxCh) return;
   const d = new TextEncoder().encode(s);
   if (rxCh.writeValueWithoutResponse) await rxCh.writeValueWithoutResponse(d);
   else await rxCh.writeValue(d);
+}
+// Reliable write (with response) + optional binary prefix — used for file ops so
+// nothing is silently dropped mid-transfer.
+async function sendReliable(bytes){
+  if(!rxCh) return;
+  await rxCh.writeValue(bytes);
+}
+function waitFor(match, timeout=4000){
+  return new Promise((res, rej) => {
+    const to = setTimeout(() => { waiter = null; rej(new Error('board timeout')); }, timeout);
+    waiter = { match, resolve: v => { clearTimeout(to); waiter = null; res(v); } };
+  });
 }
 
 function renderDevices(payload){
@@ -97,12 +127,21 @@ $('connect').onclick = async () => {
     await txCh.startNotifications();
     txCh.addEventListener('characteristicvaluechanged', e => {
       const v = new TextDecoder().decode(e.target.value);
+      // File-read framing: fbeg -> fdat* -> fend. Accumulate here.
+      if (v.startsWith('fbeg:')) { fileBuf = ''; return; }
+      if (v.startsWith('fdat:')) { fileBuf += v.slice(5); return; }
+      if (v.startsWith('fend:')) {
+        $('payload').value = fileBuf;
+        if (waiter && waiter.match(v)) waiter.resolve(v);
+        return;
+      }
+      if (waiter && waiter.match(v)) { waiter.resolve(v); return; }
       if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
     });
     $('stat').textContent = '✔ connected to ' + (dev.name || 'PoC-KBD');
     $('connect').hidden = true; $('app').hidden = false;
     sendCmd('__BONDS__');                                   // list now
-    refreshTimer = setInterval(() => sendCmd('__BONDS__'), 3000);   // auto-refresh
+    refreshTimer = setInterval(() => { if (!busy) sendCmd('__BONDS__'); }, 3000);   // auto-refresh (paused during file ops)
   } catch (e) { $('stat').textContent = '✖ ' + e.message; }
 };
 
@@ -114,6 +153,50 @@ $('send').onclick = send;
 $('text').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
 $('list').onclick = () => sendCmd('__BONDS__');
 $('drop').onclick = async () => { if (confirm('Disconnect all current BLE links?')) await sendCmd('__DROP__'); };
+
+// ---- OS payload editing --------------------------------------------------
+function plStat(m){ $('plstat').textContent = m; }
+
+async function loadPayload(os){
+  if (!rxCh || busy) return;
+  busy = true; curOS = os;
+  $('payload').disabled = true; $('plsave').disabled = true;
+  plStat('loading ' + os + '…');
+  try {
+    await sendCmd('__GET__:' + os);
+    await waitFor(v => v === 'fend:' + os || v === 'ferr:read');
+    $('payload').disabled = false; $('plsave').disabled = false;
+    plStat('editing ' + os + '.txt (' + $('payload').value.length + ' bytes)');
+    for (const b of document.querySelectorAll('.os')) b.style.borderColor = b.dataset.os === os ? '#22d3e0' : '#30363d';
+  } catch (e) { plStat('✖ ' + e.message); }
+  finally { busy = false; }
+}
+
+async function savePayload(){
+  if (!rxCh || busy || !curOS) return;
+  busy = true; $('plsave').disabled = true;
+  const enc = new TextEncoder().encode($('payload').value);
+  const pfx = new TextEncoder().encode('__W__:');
+  plStat('saving ' + curOS + '… (' + enc.length + ' bytes)');
+  try {
+    await sendReliable(new TextEncoder().encode('__PUT__:' + curOS));
+    await waitFor(v => v === 'wok' || v.startsWith('ferr'));
+    for (let i = 0; i < enc.length; i += 160) {
+      const slice = enc.slice(i, i + 160);
+      const buf = new Uint8Array(pfx.length + slice.length);
+      buf.set(pfx, 0); buf.set(slice, pfx.length);
+      await sendReliable(buf);
+      await waitFor(v => v === 'wok' || v.startsWith('ferr'));
+    }
+    await sendReliable(new TextEncoder().encode('__WEND__'));
+    const r = await waitFor(v => v.startsWith('fdone:') || v.startsWith('ferr'));
+    plStat(r.startsWith('fdone:') ? '✔ saved ' + curOS + '.txt (' + r.slice(6) + ' bytes)' : '✖ ' + r);
+  } catch (e) { plStat('✖ ' + e.message); }
+  finally { busy = false; $('plsave').disabled = false; }
+}
+
+for (const b of document.querySelectorAll('.os')) b.onclick = () => loadPayload(b.dataset.os);
+$('plsave').onclick = savePayload;
 </script>
 </body>
 </html>

@@ -3,6 +3,7 @@
 // the phone writes text to the control service, and the board injects it into the
 // PC over BLE-HID. Advertises as "PoC-KBD"; bonds Just Works.
 #include "ble_hid.h"
+#include "usb_hid.h"   // pocFsRead / pocFsWrite* — edit the payload files over BLE
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <NimBLEHIDDevice.h>
@@ -21,7 +22,7 @@ static char          g_pending[256] = "";        // text from the phone, typed b
 static volatile bool g_hasPending = false;
 static volatile bool g_ctrlReady = false;        // a phone has written to the control service
 static uint16_t      g_phoneHandle = 0xFFFF;     // conn handle of that phone
-static char          g_cmd[80] = "";             // pending control command from the phone
+static char          g_cmd[220] = "";            // pending control command (also carries file-write chunks)
 static volatile bool g_cmdReq  = false;
 
 static const uint8_t REPORT_MAP[] = {
@@ -182,6 +183,30 @@ static void handleCmd(const char* cmd) {
         NimBLEDevice::deleteAllBonds(); ctrlNotify("forgot all bonds"); bleHidDropAll();
     } else if (!strcmp(cmd, "__DROP__")) {
         ctrlNotify("dropping links"); bleHidDropAll();
+    } else if (!strncmp(cmd, "__GET__:", 8)) {
+        // Stream /<os>.txt back to the phone in MTU-safe frames.
+        const char* os = cmd + 8;
+        String c;
+        if (!pocFsRead(os, c)) { ctrlNotify("ferr:read"); return; }
+        String hdr = "fbeg:"; hdr += os; hdr += ":"; hdr += c.length();
+        ctrlNotify(hdr.c_str());
+        const size_t CK = 160;
+        for (size_t i = 0; i < c.length(); i += CK) {
+            size_t n = (c.length() - i < CK) ? (c.length() - i) : CK;
+            String d = "fdat:"; d += c.substring(i, i + n);
+            ctrlNotify(d.c_str());
+            delay(20);                 // let each notify drain before the next
+        }
+        String end = "fend:"; end += os; ctrlNotify(end.c_str());
+    } else if (!strncmp(cmd, "__PUT__:", 8)) {
+        ctrlNotify(pocFsWriteBegin(cmd + 8) ? "wok" : "ferr:open");
+    } else if (!strncmp(cmd, "__W__:", 6)) {
+        const char* d = cmd + 6;
+        ctrlNotify(pocFsWriteChunk((const uint8_t*)d, strlen(d)) ? "wok" : "ferr:write");
+    } else if (!strcmp(cmd, "__WEND__")) {
+        size_t sz = 0;
+        if (pocFsWriteEnd(sz)) { String r = "fdone:"; r += sz; ctrlNotify(r.c_str()); }
+        else ctrlNotify("ferr:close");
     }
 }
 

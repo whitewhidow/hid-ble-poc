@@ -5,6 +5,11 @@
 #ifndef POC_HAS_USB_HID
 // ---- C5 / no-USB-OTG: stub. The USB-side bootstrap is run manually on the PC. --
 void usbHidBegin() { /* no USB HID on this chip */ }
+// No LittleFS payloads on this board -> editing is unavailable.
+bool pocFsRead(const char*, String&)        { return false; }
+bool pocFsWriteBegin(const char*)           { return false; }
+bool pocFsWriteChunk(const uint8_t*, size_t){ return false; }
+bool pocFsWriteEnd(size_t&)                 { return false; }
 
 #else
 // ---- S3 / real USB HID: OS detection + LittleFS payload interpreter -----------
@@ -120,6 +125,41 @@ void usbSamplePayload(int os) {
         default:             path = "/linux.txt";   break;   // fall back to Linux (our target) when detection is unsure
     }
     usbRunPayloadFile(path);
+}
+
+// ---- Payload-file editing over BLE (LittleFS) --------------------------------
+// Only the three OS payloads are addressable; reject anything else so a bad/rogue
+// name can't reach arbitrary paths.
+static bool fsPath(const char* os, char* out, size_t n) {
+    if (!strcmp(os, "linux") || !strcmp(os, "windows") || !strcmp(os, "macos")) {
+        snprintf(out, n, "/%s.txt", os); return true;
+    }
+    return false;
+}
+
+static File   s_wf;          // file open for a phone-driven write
+static size_t s_wn = 0;      // bytes written so far
+
+bool pocFsRead(const char* os, String& out) {
+    char p[24]; if (!fsPath(os, p, sizeof(p))) return false;
+    LittleFS.begin(true);
+    File f = LittleFS.open(p, "r"); if (!f) return false;
+    out = ""; out.reserve(f.size());
+    while (f.available()) out += (char)f.read();
+    f.close(); return true;
+}
+bool pocFsWriteBegin(const char* os) {
+    char p[24]; if (!fsPath(os, p, sizeof(p))) return false;
+    LittleFS.begin(true);
+    s_wf = LittleFS.open(p, "w"); s_wn = 0; return (bool)s_wf;
+}
+bool pocFsWriteChunk(const uint8_t* data, size_t n) {
+    if (!s_wf) return false;
+    size_t w = s_wf.write(data, n); s_wn += w; return w == n;
+}
+bool pocFsWriteEnd(size_t& sizeOut) {
+    if (!s_wf) return false;
+    sizeOut = s_wn; s_wf.close(); return true;
 }
 
 void usbHidBegin() {
