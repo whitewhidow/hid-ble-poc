@@ -46,12 +46,15 @@ Write-Host ""
 # ============================================================
 
 # Await a WinRT IAsyncOperation without System.WindowsRuntimeSystemExtensions
-# (not loaded in Windows PowerShell 5.1): poll Status then read GetResults().
-# AsyncStatus: 0=Started, 1=Completed, 2=Canceled, 3=Error.
+# (not loaded in Windows PowerShell 5.1). GetResults() throws while the op is still
+# running, so just retry it, time-bounded so it can never hang.
 function Await($op) {
-    while ([int]$op.Status -eq 0) { Start-Sleep -Milliseconds 50 }
-    if ([int]$op.Status -ne 1) { throw "WinRT async failed (status $([int]$op.Status))" }
-    return $op.GetResults()
+    $deadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $deadline) {
+        try { return $op.GetResults() }
+        catch { Start-Sleep -Milliseconds 100 }
+    }
+    throw "WinRT async did not complete in time"
 }
 
 # Find the BLE association-endpoint for a MAC. FindAllAsync actively DISCOVERS BLE
