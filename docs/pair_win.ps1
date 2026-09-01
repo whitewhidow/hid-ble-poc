@@ -45,71 +45,42 @@ Write-Host ""
 # Helpers
 # ============================================================
 
-function Get-BluetoothEndpoints {
-    $output = & $PairTool /enum-endpoints /protocol Bluetooth 2>&1
-
-    if ($LASTEXITCODE -ne 0) {
-        return @()
-    }
-
-    return @($output)
+# Await a WinRT IAsyncOperation from Windows PowerShell 5.1.
+function Await($op, $resultType) {
+    $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() |
+        Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' } |
+        Select-Object -First 1
+    $task = $asTask.MakeGenericMethod($resultType).Invoke($null, @($op))
+    $task.Wait(-1) | Out-Null
+    $task.Result
 }
 
+# Find the BLE association-endpoint for a MAC. FindAllAsync actively DISCOVERS BLE
+# devices (unlike PairTool /enum-endpoints which only lists already-known ones, and
+# unlike DeviceWatcher whose events PS 5.1 cannot subscribe to). Returns the AEP Id,
+# which is the same "Bluetooth#Bluetooth..." endpoint PairTool /associate expects.
 function Find-EndpointByMac {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$WantedMAC
-    )
-
-    $lines = Get-BluetoothEndpoints
-
-    foreach ($line in $lines) {
-
-        $text = [string]$line
-
-        # PairTool endpoint IDs begin with Bluetooth#Bluetooth.
-        if ($text -notmatch '^\s*Bluetooth#Bluetooth\S*') {
-            continue
-        }
-
-        $endpoint = ($text.Trim() -split '\s+')[0]
-
-        $normalizedEndpoint =
-            ($endpoint -replace '[:-]', '').ToUpperInvariant()
-
-        if ($normalizedEndpoint.Contains($WantedMAC)) {
-            return $endpoint
-        }
-    }
-
-    return $null
-}
-
-# Actively discover BLE devices. PairTool /enum-endpoints only lists endpoints
-# Windows has already discovered, so without this the board (advertising fine) is
-# never seen. A DeviceWatcher for the BLE AssociationEndpoint protocol makes
-# Windows scan; keep it running while we poll PairTool.
-function Start-BleDiscovery {
+    param([Parameter(Mandatory = $true)][string]$WantedMAC)
     try {
         $null = [Windows.Devices.Enumeration.DeviceInformation, Windows.Devices.Enumeration, ContentType = WindowsRuntime]
         $bleAqs = 'System.Devices.Aep.ProtocolId:="{bb7bb05e-5972-42b5-94fc-76eaa7084d49}"'
-        $watcher = [Windows.Devices.Enumeration.DeviceInformation]::CreateWatcher(
-            $bleAqs,
-            [string[]]@('System.Devices.Aep.DeviceAddress'),
-            [Windows.Devices.Enumeration.DeviceInformationKind]::AssociationEndpoint)
-        # A DeviceWatcher needs an Added/Updated/Removed handler registered BEFORE
-        # Start(). We don't need the data — the running watcher is what makes Windows
-        # actively discover BLE devices, which is then reflected in PairTool.
-        $null = Register-ObjectEvent -InputObject $watcher -EventName Added   -Action { }
-        $null = Register-ObjectEvent -InputObject $watcher -EventName Updated -Action { }
-        $null = Register-ObjectEvent -InputObject $watcher -EventName Removed -Action { }
-        $watcher.Start()
-        return $watcher
+        $devices = Await ([Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync(
+                $bleAqs,
+                [string[]]@('System.Devices.Aep.DeviceAddress'),
+                [Windows.Devices.Enumeration.DeviceInformationKind]::AssociationEndpoint)
+        ) ([Windows.Devices.Enumeration.DeviceInformationCollection])
+
+        foreach ($d in $devices) {
+            $addr = [string]$d.Properties['System.Devices.Aep.DeviceAddress']
+            if ((($addr -replace '[:-]', '').ToUpperInvariant()).Contains($WantedMAC)) {
+                return $d.Id
+            }
+        }
     }
     catch {
-        Write-Host "BLE discovery watcher unavailable ($($_.Exception.Message)); relying on PairTool alone."
-        return $null
+        Write-Host "BLE enumeration error: $($_.Exception.Message)"
     }
+    return $null
 }
 
 # ============================================================
@@ -149,8 +120,6 @@ if ($null -ne $existing) {
 Write-Host "Scanning for $MAC ..."
 Write-Host ""
 
-$bleWatcher = Start-BleDiscovery
-
 $endpoint = $null
 
 # Keep trying until the board appears (matches the Linux pair.sh behaviour).
@@ -165,8 +134,6 @@ while ($null -eq $endpoint) {
     Write-Host "." -NoNewline
     Start-Sleep -Seconds 2
 }
-
-if ($null -ne $bleWatcher) { try { $bleWatcher.Stop() } catch { } }
 
 Write-Host ""
 
