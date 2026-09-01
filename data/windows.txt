@@ -1,0 +1,9 @@
+# Windows payload (placeholder). Opens Run -> PowerShell and types a note.
+# A real Windows BLE pairing helper isn't implemented in this PoC yet.
+GUI r
+DELAY 600
+STRING powershell
+ENTER
+DELAY 1500
+STRING # PoC-KBD ({MAC}) - Windows BLE pairing bootstrap not implemented yet
+ENTER

@@ -60,7 +60,7 @@ void dispBegin() {
 void dispShow(const char* header, const char* body, uint32_t color) {
     lcd.fillScreen(0x000000u);
     lcd.setTextWrap(true);
-    lcd.setTextColor((uint16_t)lcd.color888((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF), 0x000000u);
+    lcd.setTextColor(lcd.color888((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF), 0x000000u);
     lcd.setTextSize(3); lcd.setCursor(8, 8);  lcd.print(header);
     lcd.setTextColor(lcd.color888(0xC8, 0xD2, 0xDA), 0x000000u);
     lcd.setTextSize(2); lcd.setCursor(8, 48); lcd.print(body);
@@ -76,16 +76,22 @@ void dispCmd(const char* header, const char* cmd) {
     lcd.setTextSize(1); lcd.setCursor(8, 34); lcd.print(cmd);
 }
 
-// Persistent bottom status bar: which links are up (PC HID + phone/web) + total.
-void dispBle(bool pc, bool phone, int total) {
+// Persistent bottom status bar: PC / PHONE / USB-host as green (up) or red (down),
+// plus the total connection count.
+void dispBle(bool pc, bool phone, bool usb, int total) {
     int y = lcd.height() - 24;
-    uint16_t on = lcd.color888(0x3F, 0xB9, 0x50), off = lcd.color888(0x8A, 0x97, 0xA2);
+    // NB: color888() returns 24-bit RGB888 (uint32_t). Keep these uint32_t so
+    // LovyanGFX reads them as RGB888 — truncating to uint16_t is read as RGB565
+    // and shows the wrong colour (green -> purple, cyan -> orange).
+    uint32_t on = lcd.color888(0x3F, 0xB9, 0x50), dim = lcd.color888(0x8A, 0x97, 0xA2);
     lcd.fillRect(0, y - 4, lcd.width(), 28, 0x000000u);
     lcd.drawFastHLine(0, y - 4, lcd.width(), lcd.color888(0x30, 0x36, 0x3d));
     lcd.setTextSize(2); lcd.setCursor(8, y);
-    lcd.setTextColor(pc ? on : off, 0x000000u);    lcd.print(pc ? "PC:on" : "PC:--");
-    lcd.setTextColor(off, 0x000000u);              lcd.print(" ");
-    lcd.setTextColor(phone ? on : off, 0x000000u); lcd.print(phone ? "PH:on" : "PH:--");
+    lcd.setTextColor(pc    ? on : dim, 0x000000u); lcd.print("PC");
+    lcd.setTextColor(dim, 0x000000u);              lcd.print(" ");
+    lcd.setTextColor(phone ? on : dim, 0x000000u); lcd.print("PH");
+    lcd.setTextColor(dim, 0x000000u);              lcd.print(" ");
+    lcd.setTextColor(usb   ? on : dim, 0x000000u); lcd.print("USB");
     char t[10]; snprintf(t, sizeof(t), " [%d]", total);
-    lcd.setTextColor(off, 0x000000u);              lcd.print(t);
+    lcd.setTextColor(dim, 0x000000u);              lcd.print(t);
 }

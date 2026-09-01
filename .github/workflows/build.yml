@@ -1,0 +1,57 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [ tembed, waveshare ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      - name: Build firmware (${{ matrix.env }})
+        run: pio run -e ${{ matrix.env }}
+
+      - name: Build LittleFS image (${{ matrix.env }})
+        run: pio run -e ${{ matrix.env }} -t buildfs
+
+      - name: Collect binaries
+        run: |
+          mkdir -p out
+          B=.pio/build/${{ matrix.env }}
+          for f in firmware.bin firmware.elf bootloader.bin partitions.bin littlefs.bin; do
+            [ -f "$B/$f" ] && cp "$B/$f" "out/${{ matrix.env }}-$f" || true
+          done
+          ls -la out
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.env }}-binaries
+          path: out/*
+          if-no-files-found: error

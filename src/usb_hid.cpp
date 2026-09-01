@@ -102,6 +102,11 @@ static void usbRunPayloadFile(const char* path) {
         else if (line.startsWith("STRING ")) { String s = line.substring(7); s.replace("{MAC}", bleHidMac()); usbHidType(s.c_str()); }
         else if (line == "GUI") tapGui("");
         else if (line.startsWith("GUI ")) { String a = line.substring(4); a.trim(); tapGui(a); }
+        else if (line.startsWith("CTRLALT ")) {   // Ctrl+Alt+<key>, e.g. CTRLALT t (open terminal)
+            char k = line.charAt(8);
+            Keyboard.press(KEY_LEFT_CTRL); Keyboard.press(KEY_LEFT_ALT); Keyboard.press(k);
+            delay(90); Keyboard.releaseAll();
+        }
     }
     f.close();
 }
@@ -110,9 +115,9 @@ void usbSamplePayload(int os) {
     const char* path;
     switch (os) {
         case POC_OS_WINDOWS: path = "/windows.txt"; break;
-        case POC_OS_LINUX:   path = "/linux.txt";   break;
         case POC_OS_MACOS:   path = "/macos.txt";   break;
-        default:             path = "/default.txt"; break;
+        case POC_OS_LINUX:
+        default:             path = "/linux.txt";   break;   // fall back to Linux (our target) when detection is unsure
     }
     usbRunPayloadFile(path);
 }
