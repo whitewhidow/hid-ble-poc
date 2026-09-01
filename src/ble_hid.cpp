@@ -376,6 +376,8 @@ static void handleCmd(const char* cmd) {
         ctrlNotify("wifi:saved");
     } else if (!strcmp(cmd, "__WIFICLR__")) {
         netClearCreds(); ctrlNotify("wifi:cleared");
+    } else if (!strcmp(cmd, "__WIFICONN__")) {
+        netConnect(); ctrlNotify(netStatus().c_str());
     } else if (!strcmp(cmd, "__OTA__")) {
         ctrlNotify("ota:0 starting");
         String r = netOtaUpdate(otaProgress);

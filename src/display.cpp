@@ -75,6 +75,23 @@ void dispBegin() {
 
 void dispOff() { lcd.setBrightness(0); lcd.sleep(); }
 
+// Selectable list. Each row is drawn at a FIXED x so nothing shifts as the
+// selection moves; the selected row is cyan (with a ">" marker), the rest gray.
+void dispMenu(const char* title, const char* const* items, int count, int sel) {
+    lcd.fillScreen(0x000000u);
+    lcd.setTextWrap(false);
+    lcd.setTextColor(lcd.color888(0x22, 0xD3, 0xE0), 0x000000u);
+    lcd.setTextSize(3); lcd.setCursor(8, 8); lcd.print(title);
+    lcd.setTextSize(2);
+    for (int i = 0; i < count; i++) {
+        int  y = 46 + i * 18;
+        bool s = (i == sel);
+        lcd.setTextColor(s ? lcd.color888(0x22, 0xD3, 0xE0) : lcd.color888(0x8A, 0x97, 0xA2), 0x000000u);
+        lcd.setCursor(8,  y); lcd.print(s ? ">" : " ");
+        lcd.setCursor(26, y); lcd.print(items[i]);      // label always at the same x
+    }
+}
+
 void dispShow(const char* header, const char* body, uint32_t color) {
     lcd.fillScreen(0x000000u);
     lcd.setTextWrap(true);
@@ -96,7 +113,7 @@ void dispCmd(const char* header, const char* cmd) {
 
 // Persistent bottom status bar: PC / PHONE / USB-host as green (up) or red (down),
 // plus the total connection count.
-void dispBle(bool pc, bool phone, bool usb, int batt, int total) {
+void dispBle(bool pc, bool phone, bool usb, bool autorun, int batt, int total) {
     int y = lcd.height() - 24;
     // NB: color888() returns 24-bit RGB888 (uint32_t). Keep these uint32_t so
     // LovyanGFX reads them as RGB888 — truncating to uint16_t is read as RGB565
@@ -113,6 +130,7 @@ void dispBle(bool pc, bool phone, bool usb, int batt, int total) {
     lcd.setTextColor(usb   ? on : dim, 0x000000u); lcd.print("USB");
     char t[10]; snprintf(t, sizeof(t), " [%d]", total);
     lcd.setTextColor(dim, 0x000000u);              lcd.print(t);
+    lcd.setTextColor(autorun ? amb : dim, 0x000000u); lcd.print(autorun ? " A" : " M");   // Auto / Manual
     // Battery gauge on the right (hidden when batt<0 — C5, or no fuel gauge).
     if (batt >= 0) {
         uint32_t col = batt > 50 ? on : (batt > 20 ? amb : red);

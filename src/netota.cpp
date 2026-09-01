@@ -21,19 +21,21 @@ static void loadCreds() {
     s_prefs.end();
 }
 
-void netBegin() {
-    loadCreds();
-    if (s_ssid.length()) { WiFi.mode(WIFI_STA); WiFi.setSleep(true); WiFi.begin(s_ssid.c_str(), s_pass.c_str()); }
-}
+void netBegin() { loadCreds(); }        // load creds only — NO auto-connect; the web triggers it
 bool netHasCreds() { return s_ssid.length() > 0; }
+
+void netConnect() {                     // explicit connect with the saved creds
+    if (!s_ssid.length()) return;
+    WiFi.mode(WIFI_STA); WiFi.setSleep(true);
+    WiFi.disconnect();
+    WiFi.begin(s_ssid.c_str(), s_pass.c_str());
+}
 
 void netSetCreds(const String& ssid, const String& pass) {
     s_prefs.begin("poc", false);
     s_prefs.putString("ssid", ssid); s_prefs.putString("pass", pass);
     s_prefs.end();
-    s_ssid = ssid; s_pass = pass;
-    WiFi.mode(WIFI_STA); WiFi.disconnect();
-    WiFi.begin(s_ssid.c_str(), s_pass.c_str());
+    s_ssid = ssid; s_pass = pass;       // save only — connect is a separate, explicit web action
 }
 void netClearCreds() {
     s_prefs.begin("poc", false); s_prefs.remove("ssid"); s_prefs.remove("pass"); s_prefs.end();
@@ -79,6 +81,7 @@ String netOtaUpdate(void (*cb)(int, const char*)) {
 #else   // ---- C5 / no OTA (4MB can't fit A/B slots) --------------------------
 void   netBegin() {}
 bool   netHasCreds() { return false; }
+void   netConnect() {}
 void   netSetCreds(const String&, const String&) {}
 void   netClearCreds() {}
 String netStatus() { return String("wifi:unsupported|-|-|") + POC_VERSION; }

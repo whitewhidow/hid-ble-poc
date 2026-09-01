@@ -80,7 +80,7 @@ int usbDetectOS() { int os = classifyOS(); resetLocks(); return os; }
 const char* usbOsName(int os) {
     switch (os) {
         case POC_OS_WINDOWS: return "Windows"; case POC_OS_LINUX: return "Linux";
-        case POC_OS_MACOS: return "macOS";     case POC_OS_IOS: return "iOS";
+        case POC_OS_MACOS: return "Macos";     case POC_OS_IOS: return "iOS";
         case POC_OS_ANDROID: return "Android"; case POC_OS_CHROMEOS: return "ChromeOS";
         default: return "Unknown";
     }

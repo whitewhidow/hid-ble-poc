@@ -4,8 +4,9 @@
 #pragma once
 #include <Arduino.h>
 
-void        netBegin();                                   // load creds, start WiFi if set (non-blocking)
+void        netBegin();                                   // load creds only (no auto-connect)
 bool        netHasCreds();
+void        netConnect();                                 // connect with saved creds (explicit, from web)
 void        netSetCreds(const String& ssid, const String& pass);  // save + (re)connect
 void        netClearCreds();
 String      netStatus();                                  // "wifi:<ssid>|<state>|<ip>|<ver>"

@@ -31,7 +31,7 @@ static bool     firedLong = false;
 static int      sel = 0;
 static uint32_t menuAt = 0;   // T-Embed: >0 = auto-return to the menu at this millis() after a send
 
-static const char* ITEMS[] = { "Autodetect", "Linux", "Windows", "macOS", "Sleep" };
+static const char* ITEMS[] = { "Autodetect", "Linux", "Windows", "Macos", "Sleep" };
 static const int   NITEMS = 5;
 static const int   OS_OF[] = { POC_OS_UNKNOWN, POC_OS_LINUX, POC_OS_WINDOWS, POC_OS_MACOS };
 #define SLEEP_IDX 4    // last menu item = deep sleep (wake with the button)
@@ -69,15 +69,10 @@ static int batteryPct() {
 static int batteryPct() { return -1; }
 #endif
 
-static void statusBar() { dispBle(bleHidConnected(), bleHidPhone(), usbHost(), batteryPct(), bleHidConnCount()); }
+static void statusBar() { dispBle(bleHidConnected(), bleHidPhone(), usbHost(), bleAutorun(), batteryPct(), bleHidConnCount()); }
 
 static void drawMenu() {
-    // No hint line here — it pushed the last item under the status bar. The
-    // click/hold hint lives on the boot splash instead.
-    char body[200]; int p = 0;
-    for (int i = 0; i < NITEMS; i++)
-        p += snprintf(body + p, sizeof(body) - p, "%s%s\n", i == sel ? "> " : "  ", ITEMS[i]);
-    dispShow("SELECT OS", body, 0x22D3E0);
+    dispMenu("SELECT OS", ITEMS, NITEMS, sel);
     statusBar();
 }
 
