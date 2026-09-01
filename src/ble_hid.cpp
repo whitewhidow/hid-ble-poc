@@ -395,9 +395,9 @@ static void handleCmd(const char* cmd) {
         netClearCreds(); ctrlNotify("wifi:cleared");
     } else if (!strcmp(cmd, "__WIFICONN__")) {
         netConnect(); ctrlNotify(netStatus().c_str());
-    } else if (!strncmp(cmd, "__OTA__", 7)) {
-        g_otaVer[0] = 0;
-        if (cmd[7] == ':') { strncpy(g_otaVer, cmd + 8, sizeof(g_otaVer) - 1); g_otaVer[sizeof(g_otaVer) - 1] = 0; }
+    } else if (!strncmp(cmd, "__OTAVER__:", 11)) {   // target version for the OTA screen (optional)
+        strncpy(g_otaVer, cmd + 11, sizeof(g_otaVer) - 1); g_otaVer[sizeof(g_otaVer) - 1] = 0;
+    } else if (!strcmp(cmd, "__OTA__")) {
         ctrlNotify("ota:0 starting");
         String r = netOtaUpdate(otaProgress);
         if (r == "ok") { ctrlNotify("ota:100 rebooting"); delay(500); ESP.restart(); }

@@ -348,7 +348,10 @@ $('wifiClear').onclick = async () => {
 $('otaRun').onclick = async () => {
   if (!rxCh || busy || !confirm('Download the latest firmware and reboot into it? Keep the board powered.')) return;
   busy = true; $('otaRun').disabled = true; $('otaStat').textContent = 'starting…';
-  try { await sendCmd('__OTA__' + (latestVer ? ':' + latestVer : '')); } catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaRun').disabled = false; }
+  try {
+    if (latestVer) { await sendCmd('__OTAVER__:' + latestVer); await new Promise(r => setTimeout(r, 250)); }  // old fw ignores this
+    await sendCmd('__OTA__');   // plain form — every firmware version understands it
+  } catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaRun').disabled = false; }
 };
 $('list').onclick = () => sendCmd('__BONDS__');
 $('drop').onclick = async () => { if (confirm('Disconnect all current BLE links?')) await sendCmd('__DROP__'); };
