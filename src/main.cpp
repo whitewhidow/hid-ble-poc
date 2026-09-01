@@ -12,18 +12,18 @@
 #include "display.h"
 #include "netota.h"
 #include <Wire.h>
+#include "esp_sleep.h"
+#include "driver/rtc_io.h"
 
 #if defined(POC_BOARD_TEMBED)
 #define POC_BOARD_NAME "T-Embed CC1101"
+#elif defined(POC_BOARD_TDONGLE)
+#define POC_BOARD_NAME "T-Dongle S3"
 #else
-#define POC_BOARD_NAME "Waveshare C5"
+#error "define POC_BOARD_TEMBED or POC_BOARD_TDONGLE"
 #endif
 
-#if defined(POC_BOARD_TEMBED)
-static const int BTN = 0;    // encoder push (also BOOT)
-#else
-static const int BTN = 28;   // Waveshare BOOT
-#endif
+static const int BTN = 0;    // GPIO0: T-Embed encoder push / T-Dongle button (also BOOT)
 
 static bool     lastBtn = HIGH;
 static uint32_t pressStart = 0;
@@ -31,9 +31,10 @@ static bool     firedLong = false;
 static int      sel = 0;
 static uint32_t menuAt = 0;   // T-Embed: >0 = auto-return to the menu at this millis() after a send
 
-static const char* ITEMS[] = { "Autodetect", "Linux", "Windows", "macOS" };
-static const int   NITEMS = 4;
+static const char* ITEMS[] = { "Autodetect", "Linux", "Windows", "macOS", "Sleep" };
+static const int   NITEMS = 5;
 static const int   OS_OF[] = { POC_OS_UNKNOWN, POC_OS_LINUX, POC_OS_WINDOWS, POC_OS_MACOS };
+#define SLEEP_IDX 4    // last menu item = deep sleep (wake with the button)
 
 #ifdef POC_HAS_USB_HID
 extern "C" bool tud_mounted(void);
@@ -41,8 +42,8 @@ static bool usbHost() { return tud_mounted(); }     // a USB host has enumerated
 #else
 static bool usbHost() { return false; }
 #endif
-#if defined(POC_HAS_USB_HID) && defined(POC_AUTORUN)
-static bool armed = false; static int armedIdx = 0; static bool wasMounted = false;
+#ifdef POC_HAS_USB_HID
+static bool armed = false; static int armedIdx = 0; static bool wasMounted = false;   // AUTORUN arming
 #endif
 
 // Battery %: BQ27220 fuel gauge over I2C (T-Embed only), cached ~10s. -1 = none.
@@ -109,15 +110,32 @@ static void fireOS(int menuIdx) {
 #endif
 }
 
+// Deep sleep: boots fresh (setup runs) on the next button tap. GPIO0 is RTC-
+// capable on the S3, so a press wakes it via ext1.
+static void deepSleep() {
+    dispShow("SLEEP", "press the button\nto wake", 0x8A97A2);
+    delay(700);
+    dispOff();                                     // backlight off + panel sleep
+#if defined(POC_BOARD_TEMBED)
+    digitalWrite(15, LOW);                         // drop the T-Embed display rail
+#endif
+    rtc_gpio_pullup_en(GPIO_NUM_0); rtc_gpio_pulldown_dis(GPIO_NUM_0);
+    esp_sleep_enable_ext1_wakeup(1ULL << 0, ESP_EXT1_WAKEUP_ANY_LOW);
+    esp_deep_sleep_start();
+}
+
 // Select the highlighted item. Manual (default): fire now. Autorun: arm + wait.
 static void selectOS(int menuIdx) {
-#if defined(POC_HAS_USB_HID) && defined(POC_AUTORUN)
-    armed = true; armedIdx = menuIdx; wasMounted = tud_mounted();
-    char b[64]; snprintf(b, sizeof(b), "armed: %s\nplug into target\nto auto-fire", ITEMS[menuIdx]);
-    dispShow("ARMED", b, 0xF7C948); statusBar();
-#else
-    fireOS(menuIdx);
+    if (menuIdx == SLEEP_IDX) { deepSleep(); return; }   // last item = sleep
+#ifdef POC_HAS_USB_HID
+    if (bleAutorun()) {                              // arm, then auto-fire on a plug
+        armed = true; armedIdx = menuIdx; wasMounted = tud_mounted();
+        char b[64]; snprintf(b, sizeof(b), "armed: %s\nplug into target\nto auto-fire", ITEMS[menuIdx]);
+        dispShow("ARMED", b, 0xF7C948); statusBar();
+        return;
+    }
 #endif
+    fireOS(menuIdx);
 }
 
 void setup() {
@@ -154,8 +172,8 @@ void loop() {
 
     if (menuAt && (int32_t)(millis() - menuAt) >= 0) { menuAt = 0; drawMenu(); }   // auto-return to menu
 
-#if defined(POC_HAS_USB_HID) && defined(POC_AUTORUN)
-    if (armed) {                                   // fire on a fresh plug into a host
+#ifdef POC_HAS_USB_HID
+    if (armed) {                                   // AUTORUN: fire on a fresh plug into a host
         bool m = tud_mounted();
         if (m && !wasMounted) { armed = false; fireOS(armedIdx); }
         wasMounted = m;

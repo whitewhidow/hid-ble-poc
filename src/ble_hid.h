@@ -7,3 +7,5 @@ void bleHidTick();
 const char* bleHidMac();          // the board's own BLE address, "aa:bb:cc:dd:ee:ff"
 int  bleHidConnCount();           // total BLE links (PCs + phone)
 void bleHidDropAll();             // disconnect every current link, re-advertise
+bool bleAutorun();                // runtime AUTORUN setting (persisted in NVS)
+void bleSetAutorun(bool on);      // set + persist AUTORUN

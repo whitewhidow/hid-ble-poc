@@ -12,34 +12,50 @@
   #define PIN_RST  40
   #define PIN_BL   21
   #define PANEL_W  170
+  #define PANEL_H  320
   #define OFFX     35
-#elif defined(POC_BOARD_WAVESHARE)
-  #define PIN_SCLK 7
-  #define PIN_MOSI 6
+  #define OFFY     0
+  #define PANEL_FREQ 40000000
+#elif defined(POC_BOARD_TDONGLE)
+  // LilyGo T-Dongle S3 — ST7735S 80x160 LCD. Pins per LilyGo T-Dongle-S3
+  // pin_config.h. UNVERIFIED on hardware; confirm/adjust on first boot (esp. the
+  // backlight polarity and the panel offsets/rotation on the small 80x160 screen).
+  #define PIN_SCLK 5
+  #define PIN_MOSI 3
   #define PIN_MISO -1
-  #define PIN_CS   23
-  #define PIN_DC   24
-  #define PIN_RST  26
-  #define PIN_BL   10
-  #define PANEL_W  172
-  #define OFFX     34
+  #define PIN_CS   4
+  #define PIN_DC   2
+  #define PIN_RST  1
+  #define PIN_BL   38
+  #define PANEL_W  80
+  #define PANEL_H  160
+  #define OFFX     26
+  #define OFFY     1
+  #define PANEL_FREQ 27000000
+  #define PANEL_ST7735
 #else
-  #error "define POC_BOARD_TEMBED or POC_BOARD_WAVESHARE"
+  #error "define POC_BOARD_TEMBED or POC_BOARD_TDONGLE"
+#endif
+
+#if defined(PANEL_ST7735)
+  typedef lgfx::Panel_ST7735S PocPanel;
+#else
+  typedef lgfx::Panel_ST7789  PocPanel;
 #endif
 
 class LGFX_Poc : public lgfx::LGFX_Device {
-    lgfx::Panel_ST7789 _panel;
-    lgfx::Bus_SPI      _bus;
-    lgfx::Light_PWM    _light;
+    PocPanel      _panel;
+    lgfx::Bus_SPI _bus;
+    lgfx::Light_PWM _light;
 public:
     LGFX_Poc() {
         { auto c = _bus.config();
-          c.spi_host = SPI2_HOST; c.spi_mode = 0; c.freq_write = 40000000; c.freq_read = 16000000;
+          c.spi_host = SPI2_HOST; c.spi_mode = 0; c.freq_write = PANEL_FREQ; c.freq_read = 16000000;
           c.pin_sclk = PIN_SCLK; c.pin_mosi = PIN_MOSI; c.pin_miso = PIN_MISO; c.pin_dc = PIN_DC;
           _bus.config(c); _panel.setBus(&_bus); }
         { auto c = _panel.config();
           c.pin_cs = PIN_CS; c.pin_rst = PIN_RST; c.pin_busy = -1;
-          c.panel_width = PANEL_W; c.panel_height = 320; c.offset_x = OFFX; c.offset_y = 0; c.offset_rotation = 0;
+          c.panel_width = PANEL_W; c.panel_height = PANEL_H; c.offset_x = OFFX; c.offset_y = OFFY; c.offset_rotation = 0;
           c.readable = false; c.invert = true; c.rgb_order = false; c.bus_shared = true;
           _panel.config(c); }
         { auto c = _light.config(); c.pin_bl = PIN_BL; c.invert = false; c.freq = 44100; c.pwm_channel = 7;
@@ -52,10 +68,12 @@ static LGFX_Poc lcd;
 
 void dispBegin() {
     lcd.init();
-    lcd.setRotation(1);              // landscape 320 x (170/172)
+    lcd.setRotation(1);              // landscape
     lcd.setBrightness(200);
     lcd.fillScreen(0x000000u);
 }
+
+void dispOff() { lcd.setBrightness(0); lcd.sleep(); }
 
 void dispShow(const char* header, const char* body, uint32_t color) {
     lcd.fillScreen(0x000000u);

@@ -25,14 +25,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio
 
-      - name: Build T-Embed app image
-        run: pio run -e tembed
+      - name: Build app images
+        run: |
+          pio run -e tembed
+          pio run -e tdongle
 
-      - name: Stage release asset
-        run: cp .pio/build/tembed/firmware.bin hid-ble-poc-app-tembed.bin
+      - name: Stage release assets
+        run: |
+          cp .pio/build/tembed/firmware.bin  hid-ble-poc-app-tembed.bin
+          cp .pio/build/tdongle/firmware.bin hid-ble-poc-app-tdongle.bin
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: hid-ble-poc-app-tembed.bin
+          files: |
+            hid-ble-poc-app-tembed.bin
+            hid-ble-poc-app-tdongle.bin
           generate_release_notes: true

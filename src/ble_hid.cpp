@@ -7,6 +7,7 @@
 #include "netota.h"    // WiFi provisioning + in-app OTA self-update
 #include "display.h"   // OTA progress on the LCD
 #include <Arduino.h>
+#include <Preferences.h>   // persist the AUTORUN setting in NVS
 #include <NimBLEDevice.h>
 #include <NimBLEHIDDevice.h>
 
@@ -248,6 +249,17 @@ const char* bleHidMac() { return g_mac; }
 
 int  bleHidConnCount() { NimBLEServer* s = NimBLEDevice::getServer(); return s ? s->getConnectedCount() : 0; }
 
+// Runtime AUTORUN setting (persisted in NVS "poc"). -1 = not yet loaded.
+static int8_t g_autorun = -1;
+bool bleAutorun() {
+    if (g_autorun < 0) { Preferences p; p.begin("poc", true); g_autorun = p.getBool("autorun", false) ? 1 : 0; p.end(); }
+    return g_autorun == 1;
+}
+void bleSetAutorun(bool on) {
+    g_autorun = on ? 1 : 0;
+    Preferences p; p.begin("poc", false); p.putBool("autorun", on); p.end();
+}
+
 // Board-side control: drop every current BLE link (PC + phone), then re-advertise.
 void bleHidDropAll() {
     NimBLEServer* s = NimBLEDevice::getServer();
@@ -338,6 +350,11 @@ static void handleCmd(const char* cmd) {
         String r = netOtaUpdate(otaProgress);
         if (r == "ok") { ctrlNotify("ota:100 rebooting"); delay(500); ESP.restart(); }
         else ctrlNotify((String("ota:err ") + r).c_str());
+    } else if (!strcmp(cmd, "__AUTOGET__")) {
+        ctrlNotify(bleAutorun() ? "autorun:1" : "autorun:0");
+    } else if (!strncmp(cmd, "__AUTORUN__:", 12)) {
+        bleSetAutorun(cmd[12] == '1');
+        ctrlNotify(bleAutorun() ? "autorun:1" : "autorun:0");
     }
 }
 

@@ -95,6 +95,11 @@
       <button id="otaRun" class="warn">Update firmware</button>
     </div>
     <div class="sub" style="margin:4px 0 0">The board downloads the newest release, writes the spare slot, and reboots into it. Keep it powered — don't unplug during the update.</div>
+    <h2>Options</h2>
+    <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:6px 0 0">
+      <input type="checkbox" id="autorun" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0">
+      <span style="flex:1">Autorun — arm on OS select, then auto-fire the payload when plugged into a host</span>
+    </label>
   </section>
 
   <section id="tab-help" hidden>
@@ -221,6 +226,7 @@ $('connect').onclick = async () => {
       if (waiter && waiter.match(v)) { waiter.resolve(v); return; }
       if (v.startsWith('wifi:')) { renderWifi(v); return; }
       if (v.startsWith('ota:'))  { renderOta(v);  return; }
+      if (v.startsWith('autorun:')) { $('autorun').checked = (v.slice(8) === '1'); return; }
       if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
     });
     $('stat').textContent = '✔ connected to ' + (dev.name || 'PoC-KBD');
@@ -241,7 +247,7 @@ $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey
 for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
   for (const x of document.querySelectorAll('.tab')) x.classList.toggle('active', x === t);
   for (const id of ['type','payloads','devices','ota','help']) $('tab-' + id).hidden = (id !== t.dataset.tab);
-  if (t.dataset.tab === 'ota') sendCmd('__WIFIST__');
+  if (t.dataset.tab === 'ota') { sendCmd('__WIFIST__'); sendCmd('__AUTOGET__'); }
 };
 
 // ---- WiFi / OTA ----------------------------------------------------------
@@ -259,6 +265,7 @@ function renderOta(v){
   $('otaStat').textContent = rest;
   if (rest.startsWith('err')) { busy = false; $('otaRun').disabled = false; }
 }
+$('autorun').onchange = () => { if (rxCh) sendCmd('__AUTORUN__:' + ($('autorun').checked ? '1' : '0')); };
 $('wifiRefresh').onclick = () => sendCmd('__WIFIST__');
 $('wifiSave').onclick = async () => {
   const s = $('ssid').value.trim(); if (!s || !rxCh) return;
