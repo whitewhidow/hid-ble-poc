@@ -48,14 +48,34 @@ while ($null -eq $dev) {
 Write-Host ""
 Write-Host ("FOUND: {0}" -f $dev.Name)
 
+$null = [Windows.Devices.Enumeration.DevicePairingKinds,       Windows.Devices.Enumeration, ContentType = WindowsRuntime]
+$null = [Windows.Devices.Enumeration.DevicePairingProtectionLevel, Windows.Devices.Enumeration, ContentType = WindowsRuntime]
+
 $p = $dev.DeviceInformation.Pairing
 if ($p.IsPaired) { Write-Host "Already paired."; exit 0 }
 if (-not $p.CanPair) { throw "Device reports it cannot be paired (CanPair = false)." }
 
-Write-Host "Pairing (Just Works)..."
-$r = Await ($p.PairAsync()) ([Windows.Devices.Enumeration.DevicePairingResult])
-Write-Host ("Result: {0}" -f $r.Status)
+# Just Works = Custom pairing, ConfirmOnly, auto-accept the request. Fall back to
+# the basic PairAsync if the (WinRT) event handler can't be attached.
+$r = $null
+try {
+    $custom = $p.Custom
+    $handler = [Windows.Foundation.TypedEventHandler[Windows.Devices.Enumeration.DeviceInformationCustomPairing, Windows.Devices.Enumeration.DevicePairingRequestedEventArgs]] {
+        param($s, $e)
+        Write-Host "  pairing requested -> Accept"
+        $e.Accept()
+    }
+    $custom.add_PairingRequested($handler)
+    Write-Host "Pairing (Custom / ConfirmOnly / None)..."
+    $r = Await ($custom.PairAsync([Windows.Devices.Enumeration.DevicePairingKinds]::ConfirmOnly, [Windows.Devices.Enumeration.DevicePairingProtectionLevel]::None)) ([Windows.Devices.Enumeration.DevicePairingResult])
+}
+catch {
+    Write-Host "  custom pairing unavailable ($($_.Exception.Message))"
+    Write-Host "Pairing (basic / protection None)..."
+    $r = Await ($p.PairAsync([Windows.Devices.Enumeration.DevicePairingProtectionLevel]::None)) ([Windows.Devices.Enumeration.DevicePairingResult])
+}
 
+Write-Host ("Result: {0}" -f $r.Status)
 if ("$($r.Status)" -eq 'Paired' -or "$($r.Status)" -eq 'AlreadyPaired') {
     Write-Host "SUCCESS"
     exit 0
