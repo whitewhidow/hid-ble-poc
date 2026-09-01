@@ -45,14 +45,13 @@ Write-Host ""
 # Helpers
 # ============================================================
 
-# Await a WinRT IAsyncOperation from Windows PowerShell 5.1.
-function Await($op, $resultType) {
-    $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() |
-        Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' } |
-        Select-Object -First 1
-    $task = $asTask.MakeGenericMethod($resultType).Invoke($null, @($op))
-    $task.Wait(-1) | Out-Null
-    $task.Result
+# Await a WinRT IAsyncOperation without System.WindowsRuntimeSystemExtensions
+# (not loaded in Windows PowerShell 5.1): poll Status then read GetResults().
+# AsyncStatus: 0=Started, 1=Completed, 2=Canceled, 3=Error.
+function Await($op) {
+    while ([int]$op.Status -eq 0) { Start-Sleep -Milliseconds 50 }
+    if ([int]$op.Status -ne 1) { throw "WinRT async failed (status $([int]$op.Status))" }
+    return $op.GetResults()
 }
 
 # Find the BLE association-endpoint for a MAC. FindAllAsync actively DISCOVERS BLE
@@ -67,8 +66,7 @@ function Find-EndpointByMac {
         $devices = Await ([Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync(
                 $bleAqs,
                 [string[]]@('System.Devices.Aep.DeviceAddress'),
-                [Windows.Devices.Enumeration.DeviceInformationKind]::AssociationEndpoint)
-        ) ([Windows.Devices.Enumeration.DeviceInformationCollection])
+                [Windows.Devices.Enumeration.DeviceInformationKind]::AssociationEndpoint))
 
         foreach ($d in $devices) {
             $addr = [string]$d.Properties['System.Devices.Aep.DeviceAddress']
