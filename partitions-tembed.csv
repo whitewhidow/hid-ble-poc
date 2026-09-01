@@ -1,0 +1,9 @@
+# T-Embed CC1101 (ESP32-S3, 16MB) — A/B OTA layout + LittleFS payloads.
+# Two 3MB app slots so the board can self-update over WiFi (Update.h writes the
+# inactive slot, otadata marks it bootable, reboot runs it).
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x5000,
+otadata,    data, ota,      0xe000,   0x2000,
+app0,       app,  ota_0,    0x10000,  0x300000,
+app1,       app,  ota_1,    0x310000, 0x300000,
+littlefs,   data, spiffs,   0x610000, 0x9F0000,

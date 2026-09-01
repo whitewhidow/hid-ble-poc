@@ -10,6 +10,7 @@
 #include "usb_hid.h"
 #include "ble_hid.h"
 #include "display.h"
+#include "netota.h"
 
 #if defined(POC_BOARD_TEMBED)
 static const int BTN = 0;    // encoder push (also BOOT)
@@ -102,9 +103,10 @@ void setup() {
     dispBegin();
     usbHidBegin();
     bleHidBegin();
+    netBegin();                         // reconnect WiFi if creds were saved (for OTA)
     delay(300);
     drawMenu();
-    Serial.printf("[poc] ready. BLE MAC = %s\n", bleHidMac());
+    Serial.printf("[poc] ready v%s. BLE MAC = %s\n", netVersion(), bleHidMac());
 }
 
 void loop() {

@@ -4,6 +4,8 @@
 // PC over BLE-HID. Advertises as "PoC-KBD"; bonds Just Works.
 #include "ble_hid.h"
 #include "usb_hid.h"   // pocFsRead / pocFsWrite* — edit the payload files over BLE
+#include "netota.h"    // WiFi provisioning + in-app OTA self-update
+#include "display.h"   // OTA progress on the LCD
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <NimBLEHIDDevice.h>
@@ -259,6 +261,17 @@ void bleHidDropAll() {
 //   __BONDS__            -> reply "bonds:0=aa:bb..;1=cc:dd.." (per-device list)
 //   __FORGET__:<index>   -> delete that ONE bond (+ disconnect it if connected)
 //   __FORGETALL__        -> wipe every bond
+// OTA progress -> LCD + a throttled BLE notify (every ~5%, plus 0/100).
+static void otaProgress(int pct, const char* msg) {
+    static int last = -1;
+    if (pct == last) return;
+    if (pct == 0 || pct == 100 || pct / 5 != last / 5) {
+        char b[72]; snprintf(b, sizeof(b), "%d%%\n%s", pct, msg); dispShow("OTA UPDATE", b, 0xF7C948);
+        char n[80]; snprintf(n, sizeof(n), "ota:%d %s", pct, msg); ctrlNotify(n);
+    }
+    last = pct;
+}
+
 static void handleCmd(const char* cmd) {
     if (!strcmp(cmd, "__BONDS__")) {
         NimBLEServer* srv = NimBLEDevice::getServer();
@@ -311,6 +324,20 @@ static void handleCmd(const char* cmd) {
         size_t sz = 0;
         if (pocFsWriteEnd(sz)) { String r = "fdone:"; r += sz; ctrlNotify(r.c_str()); }
         else ctrlNotify("ferr:close");
+    } else if (!strcmp(cmd, "__WIFIST__")) {
+        ctrlNotify(netStatus().c_str());
+    } else if (!strncmp(cmd, "__WIFI__:", 9)) {
+        String v = cmd + 9; int bar = v.indexOf('|');
+        if (bar < 0) { ctrlNotify("wifi:badfmt"); return; }
+        netSetCreds(v.substring(0, bar), v.substring(bar + 1));
+        ctrlNotify("wifi:saved");
+    } else if (!strcmp(cmd, "__WIFICLR__")) {
+        netClearCreds(); ctrlNotify("wifi:cleared");
+    } else if (!strcmp(cmd, "__OTA__")) {
+        ctrlNotify("ota:0 starting");
+        String r = netOtaUpdate(otaProgress);
+        if (r == "ok") { ctrlNotify("ota:100 rebooting"); delay(500); ESP.restart(); }
+        else ctrlNotify((String("ota:err ") + r).c_str());
     }
 }
 

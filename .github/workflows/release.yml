@@ -1,0 +1,38 @@
+name: release
+
+# Tag a commit (git tag vX.Y.Z && git push --tags) to publish the T-Embed app
+# image to a GitHub release. The board's in-app updater pulls
+# releases/latest/download/hid-ble-poc-app-tembed.bin (see src/version.h).
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      - name: Build T-Embed app image
+        run: pio run -e tembed
+
+      - name: Stage release asset
+        run: cp .pio/build/tembed/firmware.bin hid-ble-poc-app-tembed.bin
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: hid-ble-poc-app-tembed.bin
+          generate_release_notes: true

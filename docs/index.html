@@ -46,6 +46,7 @@
     <button class="tab active" data-tab="type">Type</button>
     <button class="tab" data-tab="payloads">Payloads</button>
     <button class="tab" data-tab="devices">Devices</button>
+    <button class="tab" data-tab="ota">Update</button>
     <button class="tab" data-tab="help">Commands</button>
   </div>
 
@@ -76,6 +77,24 @@
       <button id="drop" class="warn">Drop links</button>
     </div>
     <div id="devices"></div>
+  </section>
+
+  <section id="tab-ota" hidden>
+    <div class="sub" style="margin:0 0 8px">Give the board WiFi, then let it update its own firmware over the air from the latest GitHub release. T-Embed only.</div>
+    <div id="wifiStat" class="keys" style="margin-bottom:10px">wifi: —</div>
+    <input id="ssid" placeholder="WiFi SSID" autocomplete="off" style="margin-bottom:8px">
+    <input id="wpass" type="password" placeholder="WiFi password" autocomplete="off" style="margin-bottom:8px">
+    <div class="row">
+      <button id="wifiSave" style="flex:1">Save WiFi</button>
+      <button id="wifiClear" class="warn">Forget</button>
+      <button id="wifiRefresh" class="sec">↻</button>
+    </div>
+    <h2>Firmware</h2>
+    <div class="row">
+      <span id="otaStat" class="sub" style="flex:1;margin:0">idle</span>
+      <button id="otaRun" class="warn">Update firmware</button>
+    </div>
+    <div class="sub" style="margin:4px 0 0">The board downloads the newest release, writes the spare slot, and reboots into it. Keep it powered — don't unplug during the update.</div>
   </section>
 
   <section id="tab-help" hidden>
@@ -200,6 +219,8 @@ $('connect').onclick = async () => {
         return;
       }
       if (waiter && waiter.match(v)) { waiter.resolve(v); return; }
+      if (v.startsWith('wifi:')) { renderWifi(v); return; }
+      if (v.startsWith('ota:'))  { renderOta(v);  return; }
       if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
     });
     $('stat').textContent = '✔ connected to ' + (dev.name || 'PoC-KBD');
@@ -219,7 +240,41 @@ $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey
 // Tabs
 for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
   for (const x of document.querySelectorAll('.tab')) x.classList.toggle('active', x === t);
-  for (const id of ['type','payloads','devices','help']) $('tab-' + id).hidden = (id !== t.dataset.tab);
+  for (const id of ['type','payloads','devices','ota','help']) $('tab-' + id).hidden = (id !== t.dataset.tab);
+  if (t.dataset.tab === 'ota') sendCmd('__WIFIST__');
+};
+
+// ---- WiFi / OTA ----------------------------------------------------------
+function renderWifi(v){
+  const rest = v.slice(5);
+  if (rest.includes('|')) {
+    const [ssid, state, ip, ver] = rest.split('|');
+    $('wifiStat').textContent = `wifi: ${ssid} — ${state}` + (ip && ip !== '-' ? ` (${ip})` : '') + `\nfirmware v${ver}`;
+  } else {
+    $('wifiStat').textContent = 'wifi: ' + rest;
+  }
+}
+function renderOta(v){
+  const rest = v.slice(4);
+  $('otaStat').textContent = rest;
+  if (rest.startsWith('err')) { busy = false; $('otaRun').disabled = false; }
+}
+$('wifiRefresh').onclick = () => sendCmd('__WIFIST__');
+$('wifiSave').onclick = async () => {
+  const s = $('ssid').value.trim(); if (!s || !rxCh) return;
+  await sendCmd('__WIFI__:' + s + '|' + $('wpass').value);
+  $('wifiStat').textContent = 'wifi: connecting…';
+  setTimeout(() => sendCmd('__WIFIST__'), 1000);
+  setTimeout(() => sendCmd('__WIFIST__'), 5000);
+};
+$('wifiClear').onclick = async () => {
+  if (!rxCh || !confirm('Forget saved WiFi on the board?')) return;
+  await sendCmd('__WIFICLR__'); setTimeout(() => sendCmd('__WIFIST__'), 500);
+};
+$('otaRun').onclick = async () => {
+  if (!rxCh || busy || !confirm('Download the latest firmware and reboot into it? Keep the board powered.')) return;
+  busy = true; $('otaRun').disabled = true; $('otaStat').textContent = 'starting…';
+  try { await sendCmd('__OTA__'); } catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaRun').disabled = false; }
 };
 $('list').onclick = () => sendCmd('__BONDS__');
 $('drop').onclick = async () => { if (confirm('Disconnect all current BLE links?')) await sendCmd('__DROP__'); };
