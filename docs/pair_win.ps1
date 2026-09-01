@@ -1,201 +1,78 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [string]$MAC,
-
-    [int]$TimeoutSeconds = 120
+    [string]$MAC
 )
+
+# PoC-KBD Windows pairing helper (pure WinRT, Windows PowerShell 5.1).
+# Discovers the advertising BLE board and pairs it Just-Works — no PairTool,
+# no DeviceWatcher events, no PowerShell 7. Usage: pair_win.ps1 <MAC>
 
 $ErrorActionPreference = 'Stop'
 
-# ============================================================
-# Configuration
-# ============================================================
+$want = ($MAC -replace '[:-]', '').ToUpperInvariant()
+if ($want -notmatch '^[0-9A-F]{12}$') { throw "Invalid Bluetooth MAC address: $MAC" }
 
-$TargetMAC = ($MAC -replace '[:-]', '').ToUpperInvariant()
-
-if ($TargetMAC -notmatch '^[0-9A-F]{12}$') {
-    throw "Invalid Bluetooth MAC address: $MAC"
-}
-
-$PairTool = Join-Path $env:SystemRoot 'System32\PairTool.exe'
-
-Write-Host "PowerShell: $($PSVersionTable.PSVersion)"
-Write-Host "Edition:    $($PSVersionTable.PSEdition)"
-Write-Host "Target MAC: $TargetMAC"
+Write-Host "PowerShell: $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
+Write-Host "Target MAC: $want"
 Write-Host ""
 
-# ============================================================
-# Check PairTool
-# ============================================================
-
-if (-not (Test-Path -LiteralPath $PairTool)) {
-    throw @"
-PairTool.exe was not found at:
-
-$PairTool
-
-This script requires the Windows 11 PairTool utility.
-"@
-}
-
-Write-Host "PairTool:  $PairTool"
-Write-Host ""
-
-# ============================================================
-# Helpers
-# ============================================================
-
-# Await a WinRT IAsyncOperation from Windows PowerShell 5.1 via AsTask. The
-# extension type lives in System.Runtime.WindowsRuntime, which must be loaded first.
+# ---- WinRT plumbing --------------------------------------------------------
+# AsTask (to await IAsyncOperation) lives in System.Runtime.WindowsRuntime.
 Add-Type -AssemblyName System.Runtime.WindowsRuntime -ErrorAction SilentlyContinue
+$null = [Windows.Devices.Enumeration.DeviceInformation, Windows.Devices.Enumeration, ContentType = WindowsRuntime]
+$null = [Windows.Devices.Bluetooth.BluetoothLEDevice,   Windows.Devices.Bluetooth,   ContentType = WindowsRuntime]
+
 function Await($op, $resultType) {
     $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() |
         Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' } |
         Select-Object -First 1
     $task = $asTask.MakeGenericMethod($resultType).Invoke($null, @($op))
-    if (-not $task.Wait(15000)) { throw "WinRT async timed out" }
+    if (-not $task.Wait(20000)) { throw "WinRT operation timed out" }
     return $task.Result
 }
 
-# Find the BLE association-endpoint for a MAC. FindAllAsync actively DISCOVERS BLE
-# devices (unlike PairTool /enum-endpoints which only lists already-known ones, and
-# unlike DeviceWatcher whose events PS 5.1 cannot subscribe to). Returns the AEP Id,
-# which is the same "Bluetooth#Bluetooth..." endpoint PairTool /associate expects.
-function Find-EndpointByMac {
-    param([Parameter(Mandatory = $true)][string]$WantedMAC)
-    try {
-        $null = [Windows.Devices.Enumeration.DeviceInformation, Windows.Devices.Enumeration, ContentType = WindowsRuntime]
-        $bleAqs = 'System.Devices.Aep.ProtocolId:="{bb7bb05e-5972-42b5-94fc-76eaa7084d49}"'
-        $devices = Await ([Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync(
-                $bleAqs,
-                [string[]]@('System.Devices.Aep.DeviceAddress'),
-                [Windows.Devices.Enumeration.DeviceInformationKind]::AssociationEndpoint)
-        ) ([Windows.Devices.Enumeration.DeviceInformationCollection])
+# ---- Discover (unpaired BLE devices) ---------------------------------------
+# The SDK-provided selector is a valid AQS the system enumerates quickly; a
+# hand-built ProtocolId AQS tends to make FindAllAsync hang.
+$selector = [Windows.Devices.Bluetooth.BluetoothLEDevice]::GetDeviceSelectorFromPairingState($false)
 
-        foreach ($d in $devices) {
-            $addr = [string]$d.Properties['System.Devices.Aep.DeviceAddress']
-            if ((($addr -replace '[:-]', '').ToUpperInvariant()).Contains($WantedMAC)) {
-                return $d.Id
-            }
-        }
+Write-Host "Scanning for $MAC (keeps trying until found)..."
+$dev = $null
+while ($null -eq $dev) {
+    $found = Await ([Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync($selector)) ([Windows.Devices.Enumeration.DeviceInformationCollection])
+    foreach ($d in $found) {
+        # BLE DeviceInformation.Id embeds the device MAC.
+        if ((($d.Id -replace '[:-]', '').ToUpperInvariant()).Contains($want)) { $dev = $d; break }
     }
-    catch {
-        Write-Host "BLE enumeration error: $($_.Exception.Message)"
-    }
-    return $null
-}
-
-# ============================================================
-# Remove existing association
-# ============================================================
-
-Write-Host "Checking for an existing Bluetooth association..."
-
-$existing = Find-EndpointByMac -WantedMAC $TargetMAC
-
-if ($null -ne $existing) {
-
-    Write-Host "Existing endpoint found:"
-    Write-Host "  $existing"
-    Write-Host ""
-
-    Write-Host "Removing existing association..."
-
-    & $PairTool /disassociate $existing 2>&1 | ForEach-Object {
-        Write-Host "  $_"
-    }
-
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "Existing association removed."
-    }
-    else {
-        Write-Host "No removable existing association, continuing..."
-    }
-
-    Write-Host ""
-}
-
-# ============================================================
-# Discovery
-# ============================================================
-
-Write-Host "Scanning for $MAC ..."
-Write-Host ""
-
-$endpoint = $null
-
-# Keep trying until the board appears (matches the Linux pair.sh behaviour).
-while ($null -eq $endpoint) {
-
-    $endpoint = Find-EndpointByMac -WantedMAC $TargetMAC
-
-    if ($null -ne $endpoint) {
-        break
-    }
-
-    Write-Host "." -NoNewline
-    Start-Sleep -Seconds 2
+    if ($null -eq $dev) { Write-Host "." -NoNewline; Start-Sleep -Seconds 2 }
 }
 
 Write-Host ""
-
-Write-Host "FOUND"
-Write-Host "Endpoint: $endpoint"
+Write-Host "FOUND: $($dev.Name)"
+Write-Host "  $($dev.Id)"
 Write-Host ""
 
-# ============================================================
-# Pair
-#
-# /just-works corresponds to the Bluetooth Just Works
-# ceremony used by a NoInputNoOutput device.
-#
-# /protection none requests no additional protection level.
-# ============================================================
+# ---- Pair (Just Works) -----------------------------------------------------
+$pairing = $dev.Pairing
 
-Write-Host "Pairing device..."
-Write-Host "Method:      Just Works"
-Write-Host "Protection:  None"
-Write-Host ""
-
-& $PairTool `
-    /associate $endpoint `
-    /protection none `
-    /just-works 2>&1 | ForEach-Object {
-        Write-Host $_
-    }
-
-$pairExitCode = $LASTEXITCODE
-
-Write-Host ""
-
-if ($pairExitCode -ne 0) {
-    throw "Bluetooth pairing failed. PairTool exit code: $pairExitCode"
+if ($pairing.IsPaired) {
+    Write-Host "Already paired."
+    exit 0
+}
+if (-not $pairing.CanPair) {
+    throw "Device reports it cannot be paired (CanPair = false)."
 }
 
-# ============================================================
-# Verify
-# ============================================================
+Write-Host "Pairing (Just Works)..."
+$result = Await ($pairing.PairAsync()) ([Windows.Devices.Enumeration.DevicePairingResult])
 
-Write-Host "Verifying association..."
+$status = "$($result.Status)"
+Write-Host "Result: $status"
+Write-Host ""
 
-Start-Sleep -Seconds 2
-
-$verified = Find-EndpointByMac -WantedMAC $TargetMAC
-
-if ($null -ne $verified) {
-
-    Write-Host ""
+if ($status -eq 'Paired' -or $status -eq 'AlreadyPaired') {
     Write-Host "SUCCESS"
-    Write-Host "Bluetooth device paired:"
-    Write-Host "  $verified"
-    Write-Host ""
-
     exit 0
 }
 
-Write-Host ""
-Write-Host "PairTool reported success, but the endpoint could not be"
-Write-Host "found during verification."
-Write-Host ""
-
-exit 1
+throw "Pairing failed: $status"
