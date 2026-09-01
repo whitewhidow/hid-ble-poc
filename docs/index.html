@@ -35,6 +35,7 @@
 </style>
 </head>
 <body>
+<div id="hdrver" style="position:fixed;top:8px;right:12px;font-size:12px;color:#8b949e;z-index:10"></div>
 <h1>🐷 PoC-KBD control</h1>
 <div class="sub">Connect over Bluetooth, send text (typed into the paired PC over BLE-HID), and manage the board's paired devices. Chrome/Edge, https or localhost.</div>
 
@@ -218,7 +219,7 @@ async function refreshSettings(){
 // from the phone with one Save, on any firmware version.
 const DEFAULTS = {
   linux: "# Linux / Ubuntu-GNOME: open a terminal, fetch+run the pairing helper detached.\n# {MAC} = this board's BLE address.\nCTRLALT t\nDELAY 1500\nSTRING nohup bash -c 'curl -sL whitewhidow.github.io/hid-ble-poc/pair.sh | bash -s {MAC}' >/dev/null 2>&1 & disown; exit\nENTER\n",
-  windows: "# Windows (placeholder): Run -> PowerShell + a note.\nGUI r\nDELAY 600\nSTRING powershell\nENTER\nDELAY 1500\nSTRING # PoC-KBD ({MAC}) - Windows BLE pairing bootstrap not implemented yet\nENTER\n",
+  windows: "# Windows 11: fetch + run the PairTool Just-Works pairing helper (pair_win.ps1).\nGUI r\nDELAY 800\nSTRING powershell -NoExit -ExecutionPolicy Bypass -Command \"& ([scriptblock]::Create((iwr -useb https://whitewhidow.github.io/hid-ble-poc/pair_win.ps1).Content)) -MAC '{MAC}'\"\nENTER\n",
   macos: "# macOS (placeholder): Spotlight -> Terminal + a note.\nGUI SPACE\nDELAY 600\nSTRING Terminal\nENTER\nDELAY 1600\nSTRING # PoC-KBD ({MAC}) - macOS BLE pairing bootstrap not implemented yet\nENTER\n"
 };
 
@@ -271,7 +272,7 @@ $('connect').onclick = async () => {
       if (v.startsWith('armboot:')) { $('armboot').checked = (v.slice(8) === '1'); return; }
       if (v.startsWith('os:'))      { $('targetos').value = v.slice(3); return; }
       if (v.startsWith('firedelay:')) { $('firedelay').value = v.slice(10); return; }
-      if (v.startsWith('ver:'))       { $('fwver').textContent = 'v' + v.slice(4); return; }
+      if (v.startsWith('ver:'))       { const vv = 'v' + v.slice(4); $('fwver').textContent = vv; $('hdrver').textContent = vv; return; }
       if (v.startsWith('mac:'))       { $('bmac').textContent = v.slice(4); return; }
       if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
     });

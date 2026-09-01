@@ -3,7 +3,7 @@
 // that POC_OTA_URL ("latest") points at, and the board pulls it over WiFi.
 #pragma once
 
-#define POC_VERSION "0.1.13"
+#define POC_VERSION "0.1.14"
 
 // App-only image (firmware.bin) published by CI on a tag. The in-app updater
 // downloads this over WiFi and writes it to the spare OTA slot. Each board pulls
