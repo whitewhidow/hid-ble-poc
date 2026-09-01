@@ -11,6 +11,13 @@
 #include "ble_hid.h"
 #include "display.h"
 #include "netota.h"
+#include <Wire.h>
+
+#if defined(POC_BOARD_TEMBED)
+#define POC_BOARD_NAME "T-Embed CC1101"
+#else
+#define POC_BOARD_NAME "Waveshare C5"
+#endif
 
 #if defined(POC_BOARD_TEMBED)
 static const int BTN = 0;    // encoder push (also BOOT)
@@ -38,7 +45,26 @@ static bool usbHost() { return false; }
 static bool armed = false; static int armedIdx = 0; static bool wasMounted = false;
 #endif
 
-static void statusBar() { dispBle(bleHidConnected(), bleHidPhone(), usbHost(), bleHidConnCount()); }
+// Battery %: BQ27220 fuel gauge over I2C (T-Embed only), cached ~10s. -1 = none.
+#if defined(POC_BOARD_TEMBED)
+static int batteryPct() {
+    static int cached = -1; static uint32_t last = 0; static bool probed = false, present = false;
+    if (probed && millis() - last < 10000) return cached;
+    last = millis();
+    if (!probed) { probed = true; Wire.begin(8, 18); Wire.beginTransmission(0x55); present = (Wire.endTransmission() == 0); }
+    if (!present) { cached = -1; return cached; }
+    Wire.beginTransmission(0x55); Wire.write(0x2C);              // StateOfCharge (%)
+    if (Wire.endTransmission(false) != 0) { cached = -1; return cached; }
+    if (Wire.requestFrom(0x55, 2) != 2)   { cached = -1; return cached; }
+    uint8_t lo = Wire.read(), hi = Wire.read(); uint16_t soc = lo | (hi << 8);
+    cached = (soc <= 100) ? (int)soc : -1;
+    return cached;
+}
+#else
+static int batteryPct() { return -1; }
+#endif
+
+static void statusBar() { dispBle(bleHidConnected(), bleHidPhone(), usbHost(), batteryPct(), bleHidConnCount()); }
 
 static void drawMenu() {
     char body[200]; int p = 0;
@@ -101,10 +127,12 @@ void setup() {
 #endif
     Serial.begin(115200);
     dispBegin();
+    { char sp[64]; snprintf(sp, sizeof(sp), "v%s\n%s", netVersion(), POC_BOARD_NAME);
+      dispShow("PoC-KBD", sp, 0x22D3E0); }                       // boot splash w/ version
     usbHidBegin();
     bleHidBegin();
     netBegin();                         // reconnect WiFi if creds were saved (for OTA)
-    delay(300);
+    delay(1200);                        // keep the splash up briefly
     drawMenu();
     Serial.printf("[poc] ready v%s. BLE MAC = %s\n", netVersion(), bleHidMac());
 }

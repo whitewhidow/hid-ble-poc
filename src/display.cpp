@@ -78,12 +78,13 @@ void dispCmd(const char* header, const char* cmd) {
 
 // Persistent bottom status bar: PC / PHONE / USB-host as green (up) or red (down),
 // plus the total connection count.
-void dispBle(bool pc, bool phone, bool usb, int total) {
+void dispBle(bool pc, bool phone, bool usb, int batt, int total) {
     int y = lcd.height() - 24;
     // NB: color888() returns 24-bit RGB888 (uint32_t). Keep these uint32_t so
     // LovyanGFX reads them as RGB888 — truncating to uint16_t is read as RGB565
     // and shows the wrong colour (green -> purple, cyan -> orange).
-    uint32_t on = lcd.color888(0x3F, 0xB9, 0x50), dim = lcd.color888(0x8A, 0x97, 0xA2);
+    uint32_t on  = lcd.color888(0x3F, 0xB9, 0x50), dim = lcd.color888(0x8A, 0x97, 0xA2);
+    uint32_t amb = lcd.color888(0xF7, 0xC9, 0x48), red = lcd.color888(0xE5, 0x48, 0x4D);
     lcd.fillRect(0, y - 4, lcd.width(), 28, 0x000000u);
     lcd.drawFastHLine(0, y - 4, lcd.width(), lcd.color888(0x30, 0x36, 0x3d));
     lcd.setTextSize(2); lcd.setCursor(8, y);
@@ -94,4 +95,16 @@ void dispBle(bool pc, bool phone, bool usb, int total) {
     lcd.setTextColor(usb   ? on : dim, 0x000000u); lcd.print("USB");
     char t[10]; snprintf(t, sizeof(t), " [%d]", total);
     lcd.setTextColor(dim, 0x000000u);              lcd.print(t);
+    // Battery gauge on the right (hidden when batt<0 — C5, or no fuel gauge).
+    if (batt >= 0) {
+        uint32_t col = batt > 50 ? on : (batt > 20 ? amb : red);
+        int bw = 26, bh = 13, bx = lcd.width() - bw - 8, by = y + 1;
+        lcd.drawRect(bx, by, bw, bh, dim);
+        lcd.fillRect(bx + bw, by + 3, 2, bh - 6, dim);              // + terminal nub
+        int fw = (bw - 4) * batt / 100; if (fw < 0) fw = 0;
+        lcd.fillRect(bx + 2, by + 2, fw, bh - 4, col);
+        char p[6]; int pw = snprintf(p, sizeof(p), "%d%%", batt);
+        lcd.setTextSize(1);
+        lcd.setTextColor(dim, 0x000000u); lcd.setCursor(bx - pw * 6 - 4, y + 4); lcd.print(p);
+    }
 }
