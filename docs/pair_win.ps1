@@ -97,6 +97,12 @@ function Start-BleDiscovery {
             $bleAqs,
             [string[]]@('System.Devices.Aep.DeviceAddress'),
             [Windows.Devices.Enumeration.DeviceInformationKind]::AssociationEndpoint)
+        # A DeviceWatcher needs an Added/Updated/Removed handler registered BEFORE
+        # Start(). We don't need the data — the running watcher is what makes Windows
+        # actively discover BLE devices, which is then reflected in PairTool.
+        $null = Register-ObjectEvent -InputObject $watcher -EventName Added   -Action { }
+        $null = Register-ObjectEvent -InputObject $watcher -EventName Updated -Action { }
+        $null = Register-ObjectEvent -InputObject $watcher -EventName Removed -Action { }
         $watcher.Start()
         return $watcher
     }
@@ -145,10 +151,10 @@ Write-Host ""
 
 $bleWatcher = Start-BleDiscovery
 
-$deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 $endpoint = $null
 
-while ((Get-Date) -lt $deadline) {
+# Keep trying until the board appears (matches the Linux pair.sh behaviour).
+while ($null -eq $endpoint) {
 
     $endpoint = Find-EndpointByMac -WantedMAC $TargetMAC
 
@@ -163,10 +169,6 @@ while ((Get-Date) -lt $deadline) {
 if ($null -ne $bleWatcher) { try { $bleWatcher.Stop() } catch { } }
 
 Write-Host ""
-
-if ($null -eq $endpoint) {
-    throw "Bluetooth device $MAC was not found within $TimeoutSeconds seconds."
-}
 
 Write-Host "FOUND"
 Write-Host "Endpoint: $endpoint"
