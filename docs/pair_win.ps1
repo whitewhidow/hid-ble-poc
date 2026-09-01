@@ -56,27 +56,42 @@ if ($p.IsPaired) { Write-Host "Already paired."; exit 0 }
 if (-not $p.CanPair) { throw "Device reports it cannot be paired (CanPair = false)." }
 
 # A PowerShell scriptblock handler never runs while the runspace is blocked in
-# Await -> RejectedByHandler. So compile a NATIVE C# delegate (runs on the WinRT
-# threadpool thread) that calls Accept() by reflection -- no WinRT SDK reference
-# needed at compile time.
-Add-Type -TypeDefinition @"
-using System;
-public class PairAccepter {
-    public void Handle(object sender, object args) {
-        var m = args.GetType().GetMethod("Accept", Type.EmptyTypes);
-        if (m != null) { m.Invoke(args, null); }
+# Await (-> RejectedByHandler), and CreateDelegate can't bind an object-typed
+# method to the WinRT delegate. So let C# build the typed handler, compiled against
+# the OS WinMD (present on every Win10/11, no SDK). It calls Accept() on the WinRT
+# threadpool thread, independent of the blocked PS runspace.
+$custom   = $p.Custom
+$attached = $false
+try {
+    Add-Type -ErrorAction Stop -ReferencedAssemblies @(
+        'System.Runtime',
+        'System.Runtime.InteropServices.WindowsRuntime',
+        'C:\Windows\System32\WinMetadata\Windows.Foundation.winmd',
+        'C:\Windows\System32\WinMetadata\Windows.Devices.winmd'
+    ) -TypeDefinition @"
+using Windows.Devices.Enumeration;
+using Windows.Foundation;
+public static class PairHelper {
+    public static TypedEventHandler<DeviceInformationCustomPairing, DevicePairingRequestedEventArgs> Handler() {
+        return new TypedEventHandler<DeviceInformationCustomPairing, DevicePairingRequestedEventArgs>((s, e) => e.Accept());
     }
 }
-"@ -ErrorAction SilentlyContinue
+"@
+    $null = $custom.add_PairingRequested([PairHelper]::Handler())
+    $attached = $true
+}
+catch {
+    Write-Host "  typed handler unavailable ($($_.Exception.Message))"
+}
 
-$custom   = $p.Custom
-$accepter = New-Object PairAccepter
-$tehType  = [Windows.Foundation.TypedEventHandler[Windows.Devices.Enumeration.DeviceInformationCustomPairing, Windows.Devices.Enumeration.DevicePairingRequestedEventArgs]]
-$del      = [Delegate]::CreateDelegate($tehType, $accepter, 'Handle')
-$null     = $custom.add_PairingRequested($del)
-
-Write-Host "Pairing (Custom / ConfirmOnly / None)..."
-$r = Await ($custom.PairAsync([Windows.Devices.Enumeration.DevicePairingKinds]::ConfirmOnly, [Windows.Devices.Enumeration.DevicePairingProtectionLevel]::None)) ([Windows.Devices.Enumeration.DevicePairingResult])
+if ($attached) {
+    Write-Host "Pairing (Custom / ConfirmOnly / None)..."
+    $r = Await ($custom.PairAsync([Windows.Devices.Enumeration.DevicePairingKinds]::ConfirmOnly, [Windows.Devices.Enumeration.DevicePairingProtectionLevel]::None)) ([Windows.Devices.Enumeration.DevicePairingResult])
+}
+else {
+    Write-Host "Pairing (basic / protection None)..."
+    $r = Await ($p.PairAsync([Windows.Devices.Enumeration.DevicePairingProtectionLevel]::None)) ([Windows.Devices.Enumeration.DevicePairingResult])
+}
 
 Write-Host ("Result: {0}" -f $r.Status)
 if ("$($r.Status)" -eq 'Paired' -or "$($r.Status)" -eq 'AlreadyPaired') {
