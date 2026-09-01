@@ -1,0 +1,127 @@
+#include "usb_hid.h"
+#include "ble_hid.h"   // bleHidMac() for {MAC} substitution
+#include <Arduino.h>
+
+#ifndef POC_HAS_USB_HID
+// ---- C5 / no-USB-OTG: stub. The USB-side bootstrap is run manually on the PC. --
+void usbHidBegin() { /* no USB HID on this chip */ }
+
+#else
+// ---- S3 / real USB HID: OS detection + LittleFS payload interpreter -----------
+#include <LittleFS.h>
+#include "USB.h"
+#include "USBHIDKeyboard.h"
+// Stock header lacks these; press() maps KEY_x-0x88 -> HID usage.
+#ifndef KEY_NUM_LOCK
+#define KEY_NUM_LOCK    0xDB
+#endif
+#ifndef KEY_SCROLL_LOCK
+#define KEY_SCROLL_LOCK 0xCF
+#endif
+
+static USBHIDKeyboard Keyboard;
+
+static volatile bool          led_response_received = false;
+static volatile int           led_event_count = 0;
+static volatile unsigned long led_event_time = 0;
+static volatile bool          caps_status = false, num_status = false, scroll_status = false;
+static unsigned long caps_sent_time = 0, num_sent_time = 0, scroll_sent_time = 0;
+static unsigned long caps_delay = 0, num_delay = 0, scroll_delay = 0;
+
+static void usbEventCallback(void*, esp_event_base_t base, int32_t id, void* ev) {
+    if (base == ARDUINO_USB_HID_KEYBOARD_EVENTS && id == ARDUINO_USB_HID_KEYBOARD_LED_EVENT) {
+        arduino_usb_hid_keyboard_event_data_t* d = (arduino_usb_hid_keyboard_event_data_t*)ev;
+        led_response_received = true; led_event_count++; led_event_time = millis();
+        caps_status = d->capslock != 0; num_status = d->numlock != 0; scroll_status = d->scrolllock != 0;
+        if (caps_sent_time   > 0 && caps_delay   == 0) caps_delay   = led_event_time - caps_sent_time;
+        if (num_sent_time    > 0 && num_delay    == 0) num_delay    = led_event_time - num_sent_time;
+        if (scroll_sent_time > 0 && scroll_delay == 0) scroll_delay = led_event_time - scroll_sent_time;
+    }
+}
+
+static void toggleKey(uint8_t key, unsigned long* t) {
+    *t = millis(); led_response_received = false;
+    Keyboard.press(key); delay(300); Keyboard.release(key); delay(800);
+}
+
+static int classifyOS() {
+    led_event_count = 0; caps_status = num_status = scroll_status = false;
+    caps_delay = num_delay = scroll_delay = 0; caps_sent_time = num_sent_time = scroll_sent_time = 0;
+    led_response_received = false;
+    uint8_t initial_caps = caps_status;
+    toggleKey(KEY_CAPS_LOCK, &caps_sent_time); delay(1500);
+    if (!led_response_received && caps_status != initial_caps) return POC_OS_IOS;
+    toggleKey(KEY_NUM_LOCK, &num_sent_time); delay(1200);
+    toggleKey(KEY_SCROLL_LOCK, &scroll_sent_time); delay(1200);
+    if (led_event_count == 0) return (caps_status != initial_caps) ? POC_OS_IOS : POC_OS_MACOS;
+    if (led_event_count >= 3 && caps_delay < 100 && num_delay < 100 && scroll_delay < 100) return POC_OS_WINDOWS;
+    bool hn = (num_delay > 0), hs = (scroll_delay > 0);
+    if (led_event_count == 1 && caps_status != initial_caps && caps_delay > 0 && caps_delay < 20 && !hn && !hs) return POC_OS_CHROMEOS;
+    if (num_status && !scroll_status && hn && !hs) return POC_OS_LINUX;
+    if ((caps_delay > 200 || num_delay > 200 || scroll_delay > 200) && (hn || hs)) return POC_OS_ANDROID;
+    if (caps_status != initial_caps) return POC_OS_IOS;
+    return POC_OS_UNKNOWN;
+}
+
+static void resetLocks() {
+    unsigned long tmp; delay(300);
+    if (caps_status)   { toggleKey(KEY_CAPS_LOCK,   &tmp); delay(200); }
+    if (num_status)    { toggleKey(KEY_NUM_LOCK,    &tmp); delay(200); }
+    if (scroll_status) { toggleKey(KEY_SCROLL_LOCK, &tmp); delay(200); }
+}
+
+int usbDetectOS() { int os = classifyOS(); resetLocks(); return os; }
+
+const char* usbOsName(int os) {
+    switch (os) {
+        case POC_OS_WINDOWS: return "Windows"; case POC_OS_LINUX: return "Linux";
+        case POC_OS_MACOS: return "macOS";     case POC_OS_IOS: return "iOS";
+        case POC_OS_ANDROID: return "Android"; case POC_OS_CHROMEOS: return "ChromeOS";
+        default: return "Unknown";
+    }
+}
+
+void usbHidType(const char* s) { for (const char* p = s; *p; ++p) { Keyboard.write((uint8_t)*p); delay(8); } }
+
+static void tapGui(const String& arg) {
+    Keyboard.press(KEY_LEFT_GUI);
+    if (arg == "SPACE") Keyboard.press(' ');
+    else if (arg.length() == 1) Keyboard.press(arg[0]);
+    delay(90); Keyboard.releaseAll();
+}
+
+// Our own tiny interpreter: GUI [key] | STRING <text> | ENTER | DELAY <ms> | # comment
+static void usbRunPayloadFile(const char* path) {
+    File f = LittleFS.open(path, "r");
+    if (!f) { usbHidType("(payload file missing: "); usbHidType(path); usbHidType(")\n"); return; }
+    while (f.available()) {
+        String line = f.readStringUntil('\n'); line.trim();
+        if (line.length() == 0 || line[0] == '#') continue;
+        if (line == "ENTER") Keyboard.write((uint8_t)'\n');
+        else if (line.startsWith("DELAY ")) delay(line.substring(6).toInt());
+        else if (line.startsWith("STRING ")) { String s = line.substring(7); s.replace("{MAC}", bleHidMac()); usbHidType(s.c_str()); }
+        else if (line == "GUI") tapGui("");
+        else if (line.startsWith("GUI ")) { String a = line.substring(4); a.trim(); tapGui(a); }
+    }
+    f.close();
+}
+
+void usbSamplePayload(int os) {
+    const char* path;
+    switch (os) {
+        case POC_OS_WINDOWS: path = "/windows.txt"; break;
+        case POC_OS_LINUX:   path = "/linux.txt";   break;
+        case POC_OS_MACOS:   path = "/macos.txt";   break;
+        default:             path = "/default.txt"; break;
+    }
+    usbRunPayloadFile(path);
+}
+
+void usbHidBegin() {
+    LittleFS.begin(true);
+    USB.onEvent(usbEventCallback);
+    Keyboard.onEvent(usbEventCallback);
+    USB.begin();
+    Keyboard.begin();
+}
+#endif // POC_HAS_USB_HID
