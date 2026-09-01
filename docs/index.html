@@ -238,7 +238,7 @@ function renderDevices(payload){
     const btn = document.createElement('button'); btn.className = 'warn'; btn.textContent = 'Forget';
     btn.onclick = async () => {
       if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }   // don't let __BONDS__ overwrite __FORGET__
-      await sendCmd('__FORGET__:' + idx);
+      await sendCmd('__FORGET__:' + addr);   // by address: robust to index shifts + duplicate bonds
       await new Promise(r => setTimeout(r, 500));
       sendCmd('__BONDS__');
       setTimeout(() => { refreshTimer = setInterval(() => { if (!busy) sendCmd('__BONDS__'); }, 3000); }, 900);

@@ -345,14 +345,33 @@ static void handleCmd(const char* cmd) {
         }
         ctrlNotify(s.c_str());
     } else if (!strncmp(cmd, "__FORGET__:", 11)) {
-        int idx = atoi(cmd + 11);
-        if (idx >= 0 && idx < NimBLEDevice::getNumBonds()) {
-            NimBLEAddress a = NimBLEDevice::getBondedAddress(idx);
-            NimBLEServer* srv = NimBLEDevice::getServer();
-            if (srv) for (uint16_t h : srv->getPeerDevices()) if (srv->getPeerInfoByHandle(h).getAddress() == a) srv->disconnect(h);
-            NimBLEDevice::deleteBond(a);
-            ctrlNotify((String("forgot ") + a.toString().c_str()).c_str());
+        // Arg is an address (preferred) or a legacy index. Delete EVERY bond whose
+        // address matches (handles duplicate bonds), using each bond's own address
+        // object so the address type is correct, and report the real count.
+        String arg = cmd + 11; arg.trim();
+        if (arg.indexOf(':') < 0) {
+            int idx = arg.toInt();
+            arg = (idx >= 0 && idx < NimBLEDevice::getNumBonds())
+                      ? String(NimBLEDevice::getBondedAddress(idx).toString().c_str()) : String("");
         }
+        int deleted = 0;
+        bool again = arg.length() > 0;
+        while (again) {
+            again = false;
+            int n = NimBLEDevice::getNumBonds();
+            for (int i = 0; i < n; i++) {
+                NimBLEAddress a = NimBLEDevice::getBondedAddress(i);
+                if (arg.equalsIgnoreCase(a.toString().c_str())) {
+                    NimBLEServer* srv = NimBLEDevice::getServer();
+                    if (srv) for (uint16_t h : srv->getPeerDevices()) if (srv->getPeerInfoByHandle(h).getAddress() == a) srv->disconnect(h);
+                    if (NimBLEDevice::deleteBond(a)) deleted++;
+                    again = true;   // list re-indexed; restart the scan
+                    break;
+                }
+            }
+        }
+        char rb[56]; snprintf(rb, sizeof(rb), "forgot %d (%s)", deleted, arg.c_str());
+        ctrlNotify(rb);
     } else if (!strcmp(cmd, "__FORGETALL__")) {
         NimBLEDevice::deleteAllBonds(); ctrlNotify("forgot all bonds"); bleHidDropAll();
     } else if (!strcmp(cmd, "__DROP__")) {
