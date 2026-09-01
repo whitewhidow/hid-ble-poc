@@ -44,9 +44,9 @@
   </div>
 
   <section id="tab-type">
-    <textarea id="text" rows="3" placeholder="text to type on the PC">hello from my phone</textarea>
+    <textarea id="text" rows="5" placeholder="text to type on the PC">hello from my phone</textarea>
     <div class="row"><button id="send" style="flex:1">Send</button></div>
-    <div class="sub" style="margin:0">Typed into the paired PC over BLE-HID. Ctrl/⌘+Enter also sends.</div>
+    <div class="sub" style="margin:0">Runs over BLE-HID on the paired PC. Plain text is typed as-is; each line can also be an Evil Crow command — e.g. <code>GuiR</code>, <code>Delay 500</code>, <code>PrintLine whoami</code>, <code>RunWin notepad</code>, <code>Press KEY_ENTER</code>, <code>CtrlAltT</code>. Ctrl/⌘+Enter sends.</div>
   </section>
 
   <section id="tab-payloads" hidden>

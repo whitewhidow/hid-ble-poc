@@ -18,7 +18,7 @@ static NimBLECharacteristic* ctrlTx = nullptr;   // control notify (-> phone)
 static volatile bool g_hidReady = false;         // PC subscribed to the HID report
 static int           g_conns    = 0;
 static char          g_mac[18]  = "";            // our own BLE address
-static char          g_pending[256] = "";        // text from the phone, typed by the loop
+static char          g_pending[512] = "";        // script/text from the phone, run by the loop
 static volatile bool g_hasPending = false;
 static volatile bool g_ctrlReady = false;        // a phone has written to the control service
 static uint16_t      g_phoneHandle = 0xFFFF;     // conn handle of that phone
@@ -89,6 +89,109 @@ void bleHidType(const char* s) {
     if (!g_hidReady || !input) { ctrlNotify("no HID host paired"); return; }
     for (const char* p = s; *p; ++p) { uint8_t m, k; if (asciiToHid(*p, m, k)) sendReport(m, k); }
     ctrlNotify("typed");
+}
+
+// ---------------------------------------------------------------------------
+// Keystroke-script interpreter (Evil Crow Cable "Wind" syntax) over BLE HID.
+// The phone sends a multi-line script to the control service; each line is one
+// command. Network commands (ShellWin/ShellNix/ServerConnect/...) are NOT here —
+// they need a TCP reverse-shell bridge this BLE PoC doesn't have. Anything not a
+// known command is typed literally (implicit Print), so plain text still works.
+// ---------------------------------------------------------------------------
+static uint8_t s_heldMod = 0;
+static uint8_t s_heldKeys[6] = { 0 };
+
+static void bleSendHeld() {
+    uint8_t r[8] = { s_heldMod, 0, s_heldKeys[0], s_heldKeys[1], s_heldKeys[2], s_heldKeys[3], s_heldKeys[4], s_heldKeys[5] };
+    input->setValue(r, 8); input->notify(); delay(12);
+}
+static void blePressUsage(uint8_t mod, uint8_t usage) {   // add to the held report (Press)
+    if (mod) s_heldMod |= mod;
+    if (usage) for (int i = 0; i < 6; i++) { if (s_heldKeys[i] == usage) break; if (s_heldKeys[i] == 0) { s_heldKeys[i] = usage; break; } }
+    bleSendHeld();
+}
+static void bleReleaseAll() { s_heldMod = 0; for (int i = 0; i < 6; i++) s_heldKeys[i] = 0; bleSendHeld(); }
+
+static void bleCombo(uint8_t mod, uint8_t usage) {        // press mod+key together, hold, release
+    uint8_t r[8] = { mod, 0, usage, 0, 0, 0, 0, 0 };
+    input->setValue(r, 8); input->notify(); delay(100);
+    uint8_t z[8] = { 0 }; input->setValue(z, 8); input->notify(); delay(20);
+}
+static void bleTypeLiteral(String s) {                    // type a string char-by-char ({MAC} expands)
+    s.replace("{MAC}", g_mac);
+    for (size_t i = 0; i < s.length(); i++) { uint8_t m, k; if (asciiToHid(s[i], m, k)) sendReport(m, k); }
+}
+static uint8_t usageOf(char c) { uint8_t m, k; return asciiToHid(c, m, k) ? k : 0; }
+
+// key-name -> (modifier bit, HID usage). Names mirror the Evil Crow keymap.
+static bool keyNameToUsage(String n, uint8_t& mod, uint8_t& usage) {
+    n.trim(); mod = 0; usage = 0;
+    struct { const char* n; uint8_t mod; uint8_t usage; } T[] = {
+        {"KEY_LEFT_CTRL",0x01,0},{"KEY_LEFT_SHIFT",0x02,0},{"KEY_LEFT_ALT",0x04,0},{"KEY_LEFT_GUI",0x08,0},
+        {"KEY_RIGHT_CTRL",0x10,0},{"KEY_RIGHT_SHIFT",0x20,0},{"KEY_RIGHT_ALT",0x40,0},{"KEY_RIGHT_GUI",0x80,0},
+        {"KEY_ENTER",0,0x28},{"KEY_RETURN",0,0x28},{"KEY_ESC",0,0x29},{"KEY_BACKSPACE",0,0x2A},{"KEY_TAB",0,0x2B},{"KEY_SPACE",0,0x2C},
+        {"KEY_CAPS_LOCK",0,0x39},{"KEY_F1",0,0x3A},{"KEY_F2",0,0x3B},{"KEY_F3",0,0x3C},{"KEY_F4",0,0x3D},{"KEY_F5",0,0x3E},{"KEY_F6",0,0x3F},
+        {"KEY_F7",0,0x40},{"KEY_F8",0,0x41},{"KEY_F9",0,0x42},{"KEY_F10",0,0x43},{"KEY_F11",0,0x44},{"KEY_F12",0,0x45},
+        {"KEY_PRINT_SCREEN",0,0x46},{"KEY_SCROLL_LOCK",0,0x47},{"KEY_PAUSE",0,0x48},{"KEY_INSERT",0,0x49},
+        {"KEY_HOME",0,0x4A},{"KEY_PAGE_UP",0,0x4B},{"KEY_DELETE",0,0x4C},{"KEY_END",0,0x4D},{"KEY_PAGE_DOWN",0,0x4E},
+        {"KEY_RIGHT_ARROW",0,0x4F},{"KEY_LEFT_ARROW",0,0x50},{"KEY_DOWN_ARROW",0,0x51},{"KEY_UP_ARROW",0,0x52},
+        {"KEY_NUM_LOCK",0,0x53},{"KEY_MENU",0,0x65},
+    };
+    for (auto& e : T) if (n == e.n) { mod = e.mod; usage = e.usage; return true; }
+    if (n.length() == 1) { uint8_t m, k; if (asciiToHid(n[0], m, k)) { mod = m; usage = k; return true; } }
+    return false;
+}
+
+static void bleRunLine(String line) {
+    line.trim();
+    if (line.length() == 0 || line.startsWith("##") || line.startsWith("REM")) return;
+    // one-shot modifier combos
+    if (line == "Release")   { bleReleaseAll(); return; }
+    if (line == "Gui")       { bleCombo(0x08, 0); return; }
+    if (line == "GuiR")      { bleCombo(0x08, usageOf('r')); return; }
+    if (line == "GuiSpace")  { bleCombo(0x08, 0x2C); return; }
+    if (line == "AltF2")     { bleCombo(0x04, 0x3B); return; }
+    if (line == "CtrlAltT")  { bleCombo(0x01 | 0x04, usageOf('t')); return; }
+    if (line == "ENTER" || line == "Enter") { bleCombo(0, 0x28); return; }
+    if (line.startsWith("Delay "))       { delay(line.substring(6).toInt()); return; }
+    if (line.startsWith("PrintLine "))   { bleTypeLiteral(line.substring(10)); bleCombo(0, 0x28); return; }
+    if (line.startsWith("Print "))       { bleTypeLiteral(line.substring(6)); return; }
+    if (line.startsWith("String ") || line.startsWith("STRING ")) { bleTypeLiteral(line.substring(7)); return; }
+    if (line.startsWith("PressRelease ")){ uint8_t m, u; if (keyNameToUsage(line.substring(13), m, u)) bleCombo(m, u); return; }
+    if (line.startsWith("Press "))       { uint8_t m, u; if (keyNameToUsage(line.substring(6),  m, u)) blePressUsage(m, u); return; }
+    if (line.startsWith("CTRLALT "))     { uint8_t m, u; if (keyNameToUsage(line.substring(8),  m, u)) bleCombo(0x01 | 0x04, u); return; }
+    if (line == "GUI")                   { bleCombo(0x08, 0); return; }
+    if (line.startsWith("GUI "))         { String a = line.substring(4); a.trim(); if (a == "SPACE") bleCombo(0x08, 0x2C); else { uint8_t m, u; if (keyNameToUsage(a, m, u)) bleCombo(0x08, u); } return; }
+    // "run" helpers: open a launcher, wait, type the command + Enter
+    if (line.startsWith("RunWin "))      { bleCombo(0x08, usageOf('r')); delay(2000); bleTypeLiteral(line.substring(7)); bleCombo(0, 0x28); return; }
+    if (line.startsWith("RunNix "))      { bleCombo(0x01 | 0x04, usageOf('t')); delay(2000); bleTypeLiteral(line.substring(7)); bleCombo(0, 0x28); return; }
+    if (line.startsWith("RunMac "))      { bleCombo(0x08, 0x2C); delay(2000); bleTypeLiteral(line.substring(7)); bleCombo(0, 0x28); return; }
+    if (line.startsWith("RunLauncher ")) { bleCombo(0x04, 0x3B); delay(2000); bleTypeLiteral(line.substring(12)); bleCombo(0, 0x28); return; }
+    if (line.startsWith("RunPowershellAdmin")) { bleCombo(0x08, usageOf('x')); delay(2000); bleTypeLiteral("a"); delay(3000); bleCombo(0, 0x50); delay(100); bleCombo(0, 0x28); return; }
+    if (line.startsWith("RunCmdAdmin"))  { bleCombo(0x08, usageOf('r')); delay(2000); bleTypeLiteral("cmd"); delay(2000); bleCombo(0x01 | 0x02, 0x28); delay(2000); bleCombo(0, 0x50); delay(100); bleCombo(0, 0x28); return; }
+    // WinPrint uses Alt+numpad unicode on Windows; for ASCII an ordinary type is
+    // equivalent, so alias to Print/PrintLine.
+    if (line.startsWith("WinPrintLine ")) { bleTypeLiteral(line.substring(13)); bleCombo(0, 0x28); return; }
+    if (line.startsWith("WinPrint "))      { bleTypeLiteral(line.substring(9)); return; }
+    // Recognised but unsupported over BLE (need the USB LED fingerprint, or a TCP
+    // reverse-shell bridge). Ignore them rather than typing the keyword out.
+    if (line == "DetectOS" || line.startsWith("ShellWin") || line.startsWith("ShellNix")
+        || line.startsWith("ShellMac") || line.startsWith("ServerConnect")) return;
+    // fallback: type the whole line literally (implicit Print)
+    bleTypeLiteral(line);
+}
+
+static void bleHidRun(const char* text) {
+    if (!g_hidReady || !input) { ctrlNotify("no HID host paired"); return; }
+    const char* p = text; String line;
+    while (*p) {
+        line = "";
+        while (*p && *p != '\n') { if (*p != '\r') line += *p; p++; }
+        if (*p == '\n') p++;
+        bleRunLine(line);
+    }
+    bleReleaseAll();                 // safety: nothing left held
+    ctrlNotify("done");
 }
 
 // Phone writes text here -> QUEUE it; the main loop does the actual typing.
@@ -214,5 +317,5 @@ static void handleCmd(const char* cmd) {
 // Runs in the main loop (safe context, not a BLE callback): handle queued work.
 void bleHidTick() {
     if (g_cmdReq) { g_cmdReq = false; handleCmd(g_cmd); }
-    if (g_hasPending) { g_hasPending = false; bleHidType(g_pending); }
+    if (g_hasPending) { g_hasPending = false; bleHidRun(g_pending); }
 }
