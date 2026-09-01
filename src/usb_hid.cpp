@@ -142,7 +142,7 @@ static size_t s_wn = 0;      // bytes written so far
 
 bool pocFsRead(const char* os, String& out) {
     char p[24]; if (!fsPath(os, p, sizeof(p))) return false;
-    LittleFS.begin(true);
+    LittleFS.begin(true, "/littlefs", 10, "littlefs");
     File f = LittleFS.open(p, "r"); if (!f) return false;
     out = ""; out.reserve(f.size());
     while (f.available()) out += (char)f.read();
@@ -150,7 +150,7 @@ bool pocFsRead(const char* os, String& out) {
 }
 bool pocFsWriteBegin(const char* os) {
     char p[24]; if (!fsPath(os, p, sizeof(p))) return false;
-    LittleFS.begin(true);
+    LittleFS.begin(true, "/littlefs", 10, "littlefs");
     s_wf = LittleFS.open(p, "w"); s_wn = 0; return (bool)s_wf;
 }
 bool pocFsWriteChunk(const uint8_t* data, size_t n) {
@@ -200,9 +200,9 @@ static void seedPayload(const char* path, const char* def) {
 void usbHidBegin() {
     // Mount LittleFS; if it won't mount OR won't accept a write (corrupt FS — the
     // cause of vanished payloads that seeding couldn't fix), reformat it clean.
-    if (!LittleFS.begin(true)) { LittleFS.format(); LittleFS.begin(true); }
+    if (!LittleFS.begin(true, "/littlefs", 10, "littlefs")) { LittleFS.format(); LittleFS.begin(true, "/littlefs", 10, "littlefs"); }
     File t = LittleFS.open("/.wtest", "w");
-    if (!t) { LittleFS.format(); LittleFS.begin(true); }
+    if (!t) { LittleFS.format(); LittleFS.begin(true, "/littlefs", 10, "littlefs"); }
     else    { t.close(); LittleFS.remove("/.wtest"); }
     seedPayload("/linux.txt",   DEF_LINUX);      // recreate any payload lost to an OTA / empty FS
     seedPayload("/windows.txt", DEF_WINDOWS);
