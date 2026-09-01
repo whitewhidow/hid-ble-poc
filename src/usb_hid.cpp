@@ -95,76 +95,8 @@ static void tapGui(const String& arg) {
     delay(90); Keyboard.releaseAll();
 }
 
-// Our own tiny interpreter: GUI [key] | STRING <text> | ENTER | DELAY <ms> | # comment
-static void usbRunPayloadFile(const char* path) {
-    File f = LittleFS.open(path, "r");
-    if (!f) { usbHidType("(payload file missing: "); usbHidType(path); usbHidType(")\n"); return; }
-    while (f.available()) {
-        String line = f.readStringUntil('\n'); line.trim();
-        if (line.length() == 0 || line[0] == '#') continue;
-        if (line == "ENTER") Keyboard.write((uint8_t)'\n');
-        else if (line.startsWith("DELAY ")) delay(line.substring(6).toInt());
-        else if (line.startsWith("STRING ")) { String s = line.substring(7); s.replace("{MAC}", bleHidMac()); usbHidType(s.c_str()); }
-        else if (line == "GUI") tapGui("");
-        else if (line.startsWith("GUI ")) { String a = line.substring(4); a.trim(); tapGui(a); }
-        else if (line.startsWith("CTRLALT ")) {   // Ctrl+Alt+<key>, e.g. CTRLALT t (open terminal)
-            char k = line.charAt(8);
-            Keyboard.press(KEY_LEFT_CTRL); Keyboard.press(KEY_LEFT_ALT); Keyboard.press(k);
-            delay(90); Keyboard.releaseAll();
-        }
-    }
-    f.close();
-}
-
-void usbSamplePayload(int os) {
-    const char* path;
-    switch (os) {
-        case POC_OS_WINDOWS: path = "/windows.txt"; break;
-        case POC_OS_MACOS:   path = "/macos.txt";   break;
-        case POC_OS_LINUX:
-        default:             path = "/linux.txt";   break;   // fall back to Linux (our target) when detection is unsure
-    }
-    usbRunPayloadFile(path);
-}
-
-// ---- Payload-file editing over BLE (LittleFS) --------------------------------
-// Only the three OS payloads are addressable; reject anything else so a bad/rogue
-// name can't reach arbitrary paths.
-static bool fsPath(const char* os, char* out, size_t n) {
-    if (!strcmp(os, "linux") || !strcmp(os, "windows") || !strcmp(os, "macos")) {
-        snprintf(out, n, "/%s.txt", os); return true;
-    }
-    return false;
-}
-
-static File   s_wf;          // file open for a phone-driven write
-static size_t s_wn = 0;      // bytes written so far
-
-bool pocFsRead(const char* os, String& out) {
-    char p[24]; if (!fsPath(os, p, sizeof(p))) return false;
-    LittleFS.begin(true, "/littlefs", 10, "littlefs");
-    File f = LittleFS.open(p, "r"); if (!f) return false;
-    out = ""; out.reserve(f.size());
-    while (f.available()) out += (char)f.read();
-    f.close(); return true;
-}
-bool pocFsWriteBegin(const char* os) {
-    char p[24]; if (!fsPath(os, p, sizeof(p))) return false;
-    LittleFS.begin(true, "/littlefs", 10, "littlefs");
-    s_wf = LittleFS.open(p, "w"); s_wn = 0; return (bool)s_wf;
-}
-bool pocFsWriteChunk(const uint8_t* data, size_t n) {
-    if (!s_wf) return false;
-    size_t w = s_wf.write(data, n); s_wn += w; return w == n;
-}
-bool pocFsWriteEnd(size_t& sizeOut) {
-    if (!s_wf) return false;
-    sizeOut = s_wn; s_wf.close(); return true;
-}
-
-// Built-in default payloads (mirror data/*.txt). OTA updates the app only, not the
-// filesystem, so we seed any MISSING payload here — the board is never left
-// without one. Existing (user-edited) files are left untouched.
+// Built-in default payloads (mirror data/*.txt). The board ALWAYS has a working
+// payload even if LittleFS is empty/broken; an on-FS file (user edit) overrides.
 static const char DEF_LINUX[] = R"(# Linux / Ubuntu-GNOME: open a terminal, fetch+run the pairing helper detached.
 # {MAC} = this board's BLE address. Format: GUI [key]|CTRLALT <key>|STRING <text>|ENTER|DELAY <ms>|# comment
 CTRLALT t
@@ -190,23 +122,100 @@ DELAY 1600
 STRING # PoC-KBD ({MAC}) - macOS BLE pairing bootstrap not implemented yet
 ENTER
 )";
+static const char* defaultPayload(int os) {
+    switch (os) { case POC_OS_WINDOWS: return DEF_WINDOWS; case POC_OS_MACOS: return DEF_MACOS; default: return DEF_LINUX; }
+}
+static const char* osPath(int os) {
+    switch (os) { case POC_OS_WINDOWS: return "/windows.txt"; case POC_OS_MACOS: return "/macos.txt"; default: return "/linux.txt"; }
+}
 
-static void seedPayload(const char* path, const char* def) {
-    if (LittleFS.exists(path)) return;
+// Tiny interpreter over a payload string: GUI [key] | CTRLALT <key> | STRING <text> | ENTER | DELAY <ms> | # comment
+static void usbRunPayloadContent(const String& content) {
+    int start = 0, n = content.length();
+    while (start < n) {
+        int nl = content.indexOf('\n', start);
+        String line = (nl < 0) ? content.substring(start) : content.substring(start, nl);
+        start = (nl < 0) ? n : nl + 1;
+        line.trim();
+        if (line.length() == 0 || line[0] == '#') continue;
+        if (line == "ENTER") Keyboard.write((uint8_t)'\n');
+        else if (line.startsWith("DELAY ")) delay(line.substring(6).toInt());
+        else if (line.startsWith("STRING ")) { String s = line.substring(7); s.replace("{MAC}", bleHidMac()); usbHidType(s.c_str()); }
+        else if (line == "GUI") tapGui("");
+        else if (line.startsWith("GUI ")) { String a = line.substring(4); a.trim(); tapGui(a); }
+        else if (line.startsWith("CTRLALT ")) {   // Ctrl+Alt+<key>, e.g. CTRLALT t (open terminal)
+            char k = line.charAt(8);
+            Keyboard.press(KEY_LEFT_CTRL); Keyboard.press(KEY_LEFT_ALT); Keyboard.press(k);
+            delay(90); Keyboard.releaseAll();
+        }
+    }
+}
+
+void usbSamplePayload(int os) {
+    String content;
+    File f = LittleFS.open(osPath(os), "r");           // on-FS file (user edit) wins if non-empty
+    if (f) { while (f.available()) content += (char)f.read(); f.close(); }
+    if (content.length() == 0) { Serial.println("[fs] payload empty/missing -> built-in default"); content = defaultPayload(os); }
+    usbRunPayloadContent(content);
+}
+
+// ---- Payload-file editing over BLE (LittleFS) --------------------------------
+// Only the three OS payloads are addressable; reject anything else so a bad/rogue
+// name can't reach arbitrary paths.
+static bool fsPath(const char* os, char* out, size_t n) {
+    if (!strcmp(os, "linux") || !strcmp(os, "windows") || !strcmp(os, "macos")) {
+        snprintf(out, n, "/%s.txt", os); return true;
+    }
+    return false;
+}
+
+static File   s_wf;          // file open for a phone-driven write
+static size_t s_wn = 0;      // bytes written so far
+
+bool pocFsRead(const char* os, String& out) {
+    char p[24]; if (!fsPath(os, p, sizeof(p))) return false;
+    LittleFS.begin(true, "/littlefs", 10, "littlefs");
+    File f = LittleFS.open(p, "r");
+    out = "";
+    if (f) { out.reserve(f.size()); while (f.available()) out += (char)f.read(); f.close(); }
+    return out.length() > 0;   // empty/missing -> false so the web shows its built-in default
+}
+bool pocFsWriteBegin(const char* os) {
+    char p[24]; if (!fsPath(os, p, sizeof(p))) return false;
+    LittleFS.begin(true, "/littlefs", 10, "littlefs");
+    s_wf = LittleFS.open(p, "w"); s_wn = 0; return (bool)s_wf;
+}
+bool pocFsWriteChunk(const uint8_t* data, size_t n) {
+    if (!s_wf) return false;
+    size_t w = s_wf.write(data, n); s_wn += w; return w == n;
+}
+bool pocFsWriteEnd(size_t& sizeOut) {
+    if (!s_wf) return false;
+    sizeOut = s_wn; s_wf.close(); return true;
+}
+
+// (Re)create a payload file if it is missing OR empty (0-byte files were the cause
+// of "payloads gone"); a real, non-empty user file is kept.
+static void seedPayload(int os) {
+    const char* path = osPath(os);
+    File r = LittleFS.open(path, "r");
+    size_t sz = r ? r.size() : 0; if (r) r.close();
+    if (sz > 0) return;
     File f = LittleFS.open(path, "w");
-    if (f) { f.print(def); f.close(); }
+    if (f) { f.print(defaultPayload(os)); f.close(); Serial.printf("[fs] seeded %s\n", path); }
+    else Serial.printf("[fs] seed FAILED %s\n", path);
 }
 
 void usbHidBegin() {
-    // Mount LittleFS; if it won't mount OR won't accept a write (corrupt FS — the
-    // cause of vanished payloads that seeding couldn't fix), reformat it clean.
-    if (!LittleFS.begin(true, "/littlefs", 10, "littlefs")) { LittleFS.format(); LittleFS.begin(true, "/littlefs", 10, "littlefs"); }
+    // Mount LittleFS (by its partition label); if it won't mount or won't accept a
+    // write, reformat clean. Then ensure every payload is present + non-empty.
+    bool ok = LittleFS.begin(true, "/littlefs", 10, "littlefs");
+    Serial.printf("[fs] mount %s\n", ok ? "ok" : "FAIL");
+    if (!ok) { LittleFS.format(); ok = LittleFS.begin(true, "/littlefs", 10, "littlefs"); Serial.printf("[fs] reformat->mount %s\n", ok ? "ok" : "FAIL"); }
     File t = LittleFS.open("/.wtest", "w");
-    if (!t) { LittleFS.format(); LittleFS.begin(true, "/littlefs", 10, "littlefs"); }
+    if (!t) { Serial.println("[fs] write-test FAIL -> format"); LittleFS.format(); LittleFS.begin(true, "/littlefs", 10, "littlefs"); }
     else    { t.close(); LittleFS.remove("/.wtest"); }
-    seedPayload("/linux.txt",   DEF_LINUX);      // recreate any payload lost to an OTA / empty FS
-    seedPayload("/windows.txt", DEF_WINDOWS);
-    seedPayload("/macos.txt",   DEF_MACOS);
+    seedPayload(POC_OS_LINUX); seedPayload(POC_OS_WINDOWS); seedPayload(POC_OS_MACOS);
     USB.onEvent(usbEventCallback);
     Keyboard.onEvent(usbEventCallback);
     USB.begin();
