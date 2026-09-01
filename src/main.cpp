@@ -48,6 +48,7 @@ static bool usbHost() { return false; }
 #endif
 #ifdef POC_HAS_USB_HID
 static bool armed = false; static int armedIdx = 0; static bool wasMounted = false;   // AUTORUN arming
+static uint32_t fireAt = 0;                                    // fire this long after a plug (host settle)
 #endif
 
 // Battery %: BQ27220 fuel gauge over I2C (T-Embed only), cached ~10s. -1 = none.
@@ -180,7 +181,9 @@ void loop() {
 #ifdef POC_HAS_USB_HID
     if (armed) {                                   // AUTORUN: fire on a fresh plug into a host
         bool m = tud_mounted();
-        if (m && !wasMounted) { armed = false; fireOS(armedIdx); }
+        if (m && !wasMounted) fireAt = millis() + bleFireDelay();  // let the host's HID stack settle
+        if (!m) fireAt = 0;                                        // else the first keystrokes drop
+        if (fireAt && millis() >= fireAt) { fireAt = 0; armed = false; fireOS(armedIdx); }
         wasMounted = m;
     }
 #endif

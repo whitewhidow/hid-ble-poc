@@ -291,6 +291,18 @@ void bleSetArmBoot(bool on) {
     Preferences p; p.begin("poc", false); p.putBool("armboot", on); p.end();
 }
 
+// Settle delay (ms) after a plug before AUTORUN fires — tune per host.
+static int32_t g_fireDelay = -1;
+int bleFireDelay() {
+    if (g_fireDelay < 0) { Preferences p; p.begin("poc", true); g_fireDelay = p.getUShort("firedelay", 2000); p.end(); }
+    return g_fireDelay;
+}
+void bleSetFireDelay(int ms) {
+    if (ms < 0) ms = 0; if (ms > 10000) ms = 10000;
+    g_fireDelay = ms;
+    Preferences p; p.begin("poc", false); p.putUShort("firedelay", (uint16_t)ms); p.end();
+}
+
 // Board-side control: drop every current BLE link (PC + phone), then re-advertise.
 void bleHidDropAll() {
     NimBLEServer* s = NimBLEDevice::getServer();
@@ -398,6 +410,11 @@ static void handleCmd(const char* cmd) {
     } else if (!strncmp(cmd, "__ARMBOOT__:", 12)) {
         bleSetArmBoot(cmd[12] == '1');
         ctrlNotify(bleArmBoot() ? "armboot:1" : "armboot:0");
+    } else if (!strcmp(cmd, "__FDGET__")) {
+        char b[16]; snprintf(b, sizeof(b), "firedelay:%d", bleFireDelay()); ctrlNotify(b);
+    } else if (!strncmp(cmd, "__FDSET__:", 10)) {
+        bleSetFireDelay(atoi(cmd + 10));
+        char b[16]; snprintf(b, sizeof(b), "firedelay:%d", bleFireDelay()); ctrlNotify(b);
     }
 }
 
