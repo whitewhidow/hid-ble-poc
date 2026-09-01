@@ -260,6 +260,37 @@ void bleSetAutorun(bool on) {
     Preferences p; p.begin("poc", false); p.putBool("autorun", on); p.end();
 }
 
+// Default OS to arm (menu index 0..3); used by AUTORUN / the buttonless dongle.
+static int8_t g_targetOs = -1;
+int bleTargetOs() {
+    if (g_targetOs < 0) { Preferences p; p.begin("poc", true); g_targetOs = (int8_t)p.getUChar("targetos", 0); p.end(); if (g_targetOs > 3) g_targetOs = 0; }
+    return g_targetOs;
+}
+void bleSetTargetOs(int idx) {
+    if (idx < 0 || idx > 3) idx = 0;
+    g_targetOs = (int8_t)idx;
+    Preferences p; p.begin("poc", false); p.putUChar("targetos", (uint8_t)idx); p.end();
+}
+
+// Arm-at-boot: auto-arm the target OS at boot (headless, for the buttonless dongle).
+// Default on for the T-Dongle, off for the T-Embed (which uses its menu).
+static int8_t g_armboot = -1;
+bool bleArmBoot() {
+    if (g_armboot < 0) {
+#if defined(POC_BOARD_TDONGLE)
+        bool def = true;
+#else
+        bool def = false;
+#endif
+        Preferences p; p.begin("poc", true); g_armboot = p.getBool("armboot", def) ? 1 : 0; p.end();
+    }
+    return g_armboot == 1;
+}
+void bleSetArmBoot(bool on) {
+    g_armboot = on ? 1 : 0;
+    Preferences p; p.begin("poc", false); p.putBool("armboot", on); p.end();
+}
+
 // Board-side control: drop every current BLE link (PC + phone), then re-advertise.
 void bleHidDropAll() {
     NimBLEServer* s = NimBLEDevice::getServer();
@@ -355,6 +386,16 @@ static void handleCmd(const char* cmd) {
     } else if (!strncmp(cmd, "__AUTORUN__:", 12)) {
         bleSetAutorun(cmd[12] == '1');
         ctrlNotify(bleAutorun() ? "autorun:1" : "autorun:0");
+    } else if (!strcmp(cmd, "__OSGET__")) {
+        char b[8]; snprintf(b, sizeof(b), "os:%d", bleTargetOs()); ctrlNotify(b);
+    } else if (!strncmp(cmd, "__OSSET__:", 10)) {
+        bleSetTargetOs(atoi(cmd + 10));
+        char b[8]; snprintf(b, sizeof(b), "os:%d", bleTargetOs()); ctrlNotify(b);
+    } else if (!strcmp(cmd, "__ABGET__")) {
+        ctrlNotify(bleArmBoot() ? "armboot:1" : "armboot:0");
+    } else if (!strncmp(cmd, "__ARMBOOT__:", 12)) {
+        bleSetArmBoot(cmd[12] == '1');
+        ctrlNotify(bleArmBoot() ? "armboot:1" : "armboot:0");
     }
 }
 

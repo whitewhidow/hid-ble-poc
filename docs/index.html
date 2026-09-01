@@ -98,7 +98,20 @@
     <h2>Options</h2>
     <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:6px 0 0">
       <input type="checkbox" id="autorun" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0">
-      <span style="flex:1">Autorun — arm on OS select, then auto-fire the payload when plugged into a host</span>
+      <span style="flex:1">Autorun — selecting an OS arms it (auto-fires on plug) instead of firing now</span>
+    </label>
+    <div class="row" style="align-items:center;gap:10px;margin:8px 0 0">
+      <span style="flex:1">Target OS (for arm-at-boot)</span>
+      <select id="targetos" style="flex:0 0 auto;padding:8px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:15px">
+        <option value="0">Autodetect</option>
+        <option value="1">Linux</option>
+        <option value="2">Windows</option>
+        <option value="3">macOS</option>
+      </select>
+    </div>
+    <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0">
+      <input type="checkbox" id="armboot" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0">
+      <span style="flex:1">Arm at boot — start armed with the target OS, no menu (headless; for the dongle)</span>
     </label>
   </section>
 
@@ -227,6 +240,8 @@ $('connect').onclick = async () => {
       if (v.startsWith('wifi:')) { renderWifi(v); return; }
       if (v.startsWith('ota:'))  { renderOta(v);  return; }
       if (v.startsWith('autorun:')) { $('autorun').checked = (v.slice(8) === '1'); return; }
+      if (v.startsWith('armboot:')) { $('armboot').checked = (v.slice(8) === '1'); return; }
+      if (v.startsWith('os:'))      { $('targetos').value = v.slice(3); return; }
       if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
     });
     $('stat').textContent = '✔ connected to ' + (dev.name || 'PoC-KBD');
@@ -247,7 +262,7 @@ $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey
 for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
   for (const x of document.querySelectorAll('.tab')) x.classList.toggle('active', x === t);
   for (const id of ['type','payloads','devices','ota','help']) $('tab-' + id).hidden = (id !== t.dataset.tab);
-  if (t.dataset.tab === 'ota') { sendCmd('__WIFIST__'); sendCmd('__AUTOGET__'); }
+  if (t.dataset.tab === 'ota') { sendCmd('__WIFIST__'); sendCmd('__AUTOGET__'); sendCmd('__OSGET__'); sendCmd('__ABGET__'); }
 };
 
 // ---- WiFi / OTA ----------------------------------------------------------
@@ -265,7 +280,9 @@ function renderOta(v){
   $('otaStat').textContent = rest;
   if (rest.startsWith('err')) { busy = false; $('otaRun').disabled = false; }
 }
-$('autorun').onchange = () => { if (rxCh) sendCmd('__AUTORUN__:' + ($('autorun').checked ? '1' : '0')); };
+$('autorun').onchange  = () => { if (rxCh) sendCmd('__AUTORUN__:' + ($('autorun').checked ? '1' : '0')); };
+$('armboot').onchange  = () => { if (rxCh) sendCmd('__ARMBOOT__:' + ($('armboot').checked ? '1' : '0')); };
+$('targetos').onchange = () => { if (rxCh) sendCmd('__OSSET__:' + $('targetos').value); };
 $('wifiRefresh').onclick = () => sendCmd('__WIFIST__');
 $('wifiSave').onclick = async () => {
   const s = $('ssid').value.trim(); if (!s || !rxCh) return;

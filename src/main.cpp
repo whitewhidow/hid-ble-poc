@@ -38,7 +38,11 @@ static const int   OS_OF[] = { POC_OS_UNKNOWN, POC_OS_LINUX, POC_OS_WINDOWS, POC
 
 #ifdef POC_HAS_USB_HID
 extern "C" bool tud_mounted(void);
-static bool usbHost() { return tud_mounted(); }     // a USB host has enumerated us
+extern "C" bool tud_suspended(void);
+// Mounted AND bus active. On unplug the S3 often keeps tud_mounted() true (no VBUS
+// sense), but the bus suspends (no SOF) so tud_suspended() flips -> this goes
+// false. (A host that suspends us while still attached also reads as absent.)
+static bool usbHost() { return tud_mounted() && !tud_suspended(); }
 #else
 static bool usbHost() { return false; }
 #endif
@@ -68,12 +72,9 @@ static int batteryPct() { return -1; }
 static void statusBar() { dispBle(bleHidConnected(), bleHidPhone(), usbHost(), batteryPct(), bleHidConnCount()); }
 
 static void drawMenu() {
+    // No hint line here — it pushed the last item under the status bar. The
+    // click/hold hint lives on the boot splash instead.
     char body[200]; int p = 0;
-#if defined(POC_BOARD_TEMBED)
-    p += snprintf(body + p, sizeof(body) - p, "click=next hold=go\n\n");
-#else
-    p += snprintf(body + p, sizeof(body) - p, "click=next hold=go\n\n");
-#endif
     for (int i = 0; i < NITEMS; i++)
         p += snprintf(body + p, sizeof(body) - p, "%s%s\n", i == sel ? "> " : "  ", ITEMS[i]);
     dispShow("SELECT OS", body, 0x22D3E0);
@@ -145,13 +146,21 @@ void setup() {
 #endif
     Serial.begin(115200);
     dispBegin();
-    { char sp[64]; snprintf(sp, sizeof(sp), "v%s\n%s", netVersion(), POC_BOARD_NAME);
-      dispShow("PoC-KBD", sp, 0x22D3E0); }                       // boot splash w/ version
+    { char sp[80]; snprintf(sp, sizeof(sp), "v%s  %s\nclick=next  hold=go", netVersion(), POC_BOARD_NAME);
+      dispShow("PoC-KBD", sp, 0x22D3E0); }                       // boot splash: version + controls
     usbHidBegin();
     bleHidBegin();
     netBegin();                         // reconnect WiFi if creds were saved (for OTA)
     delay(1200);                        // keep the splash up briefly
+#ifdef POC_HAS_USB_HID
+    if (bleArmBoot()) {                 // headless: auto-arm the configured OS, wait for a plug
+        armedIdx = bleTargetOs(); sel = armedIdx; armed = true; wasMounted = false;
+        char b[80]; snprintf(b, sizeof(b), "%s\nplug into a host\nto auto-fire", ITEMS[armedIdx]);
+        dispShow("ARMED", b, 0xF7C948); statusBar();
+    } else drawMenu();
+#else
     drawMenu();
+#endif
     Serial.printf("[poc] ready v%s. BLE MAC = %s\n", netVersion(), bleHidMac());
 }
 
