@@ -31,10 +31,21 @@ static bool     firedLong = false;
 static int      sel = 0;
 static uint32_t menuAt = 0;   // T-Embed: >0 = auto-return to the menu at this millis() after a send
 
+#if defined(POC_BOARD_TDONGLE)
+// T-Dongle is USB-powered (no battery), so deep sleep is pointless — drop it (also
+// keeps the menu to 4 rows so nothing falls under the status bar on the 80px screen).
+static const char* ITEMS[] = { "Autodetect", "Linux", "Windows", "Macos" };
+static const int   NITEMS = 4;
+#else
 static const char* ITEMS[] = { "Autodetect", "Linux", "Windows", "Macos", "Sleep" };
 static const int   NITEMS = 5;
+#endif
 static const int   OS_OF[] = { POC_OS_UNKNOWN, POC_OS_LINUX, POC_OS_WINDOWS, POC_OS_MACOS };
-#define SLEEP_IDX 4    // last menu item = deep sleep (wake with the button)
+#if defined(POC_BOARD_TDONGLE)
+#define SLEEP_IDX (-1)  // no sleep item on the T-Dongle (USB-powered)
+#else
+#define SLEEP_IDX 4     // last menu item = deep sleep (wake with the button)
+#endif
 
 #ifdef POC_HAS_USB_HID
 extern "C" bool tud_mounted(void);

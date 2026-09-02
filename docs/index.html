@@ -111,6 +111,10 @@
       <input type="checkbox" id="autorun" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0">
       <span style="flex:1">Autorun — selecting an OS arms it (auto-fires on plug) instead of firing now</span>
     </label>
+    <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0">
+      <input type="checkbox" id="armboot" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0">
+      <span style="flex:1">Arm at boot — start armed with the target OS, no menu (headless; for the dongle)</span>
+    </label>
     <div class="row" style="align-items:center;gap:10px;margin:8px 0 0">
       <span style="flex:1">Target OS (for arm-at-boot)</span>
       <select id="targetos" style="flex:0 0 auto;padding:8px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:15px">
@@ -120,10 +124,6 @@
         <option value="3">Macos</option>
       </select>
     </div>
-    <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0">
-      <input type="checkbox" id="armboot" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0">
-      <span style="flex:1">Arm at boot — start armed with the target OS, no menu (headless; for the dongle)</span>
-    </label>
     <div class="row" style="align-items:center;gap:10px;margin:8px 0 0">
       <span style="flex:1">Fire delay after plug (ms) — raise if the first keys are dropped</span>
       <input id="firedelay" type="number" min="0" max="10000" step="100" style="flex:0 0 96px;text-align:right">
@@ -174,6 +174,7 @@
     </div>
   </section>
 
+  <div style="font-weight:600;color:#8a97a2;font-size:13px;letter-spacing:.4px;text-transform:uppercase;margin:16px 0 4px">Board feedback</div>
   <div id="log"></div>
 </div>
 

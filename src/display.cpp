@@ -43,6 +43,38 @@
   typedef lgfx::Panel_ST7789  PocPanel;
 #endif
 
+// Per-board UI metrics. Landscape usable area: T-Embed ~320x170, T-Dongle ~160x80,
+// so the T-Dongle needs ~half the font sizes and tighter positions or rows fall off.
+#if defined(POC_BOARD_TDONGLE)
+  #define UI_TS_TITLE 2      // title/header text size
+  #define UI_TS_BODY  1      // body / menu-row text size
+  #define UI_PAD      4      // left padding / marker x
+  #define UI_TITLE_Y  3      // title baseline y
+  #define UI_BODY_Y   22     // body start y (dispShow)
+  #define UI_MENU_Y0  20     // first menu row y
+  #define UI_MENU_DY  11     // menu row spacing
+  #define UI_MENU_LX  14     // menu label x (after the > marker)
+  #define UI_BAR_TS   1      // status-bar text size
+  #define UI_BAR_H    12     // status-bar reserved height
+  #define UI_CTR_TY   4      // dispCenter title y
+  #define UI_CTR_BY   24     // dispCenter body start y
+  #define UI_CTR_DY   11     // dispCenter line spacing
+#else  // POC_BOARD_TEMBED
+  #define UI_TS_TITLE 3
+  #define UI_TS_BODY  2
+  #define UI_PAD      8
+  #define UI_TITLE_Y  8
+  #define UI_BODY_Y   48
+  #define UI_MENU_Y0  46
+  #define UI_MENU_DY  18
+  #define UI_MENU_LX  26
+  #define UI_BAR_TS   2
+  #define UI_BAR_H    24
+  #define UI_CTR_TY   12
+  #define UI_CTR_BY   60
+  #define UI_CTR_DY   22
+#endif
+
 class LGFX_Poc : public lgfx::LGFX_Device {
     PocPanel      _panel;
     lgfx::Bus_SPI _bus;
@@ -83,14 +115,14 @@ void dispMenu(const char* title, const char* const* items, int count, int sel) {
     lcd.fillScreen(0x000000u);
     lcd.setTextWrap(false);
     lcd.setTextColor(lcd.color888(0x22, 0xD3, 0xE0), 0x000000u);
-    lcd.setTextSize(3); lcd.setCursor(8, 8); lcd.print(title);
-    lcd.setTextSize(2);
+    lcd.setTextSize(UI_TS_TITLE); lcd.setCursor(UI_PAD, UI_TITLE_Y); lcd.print(title);
+    lcd.setTextSize(UI_TS_BODY);
     for (int i = 0; i < count; i++) {
-        int  y = 46 + i * 18;
+        int  y = UI_MENU_Y0 + i * UI_MENU_DY;
         bool s = (i == sel);
         lcd.setTextColor(s ? lcd.color888(0x22, 0xD3, 0xE0) : lcd.color888(0x8A, 0x97, 0xA2), 0x000000u);
-        lcd.setCursor(8,  y); lcd.print(s ? ">" : " ");
-        lcd.setCursor(26, y); lcd.print(items[i]);      // label always at the same x
+        lcd.setCursor(UI_PAD,     y); lcd.print(s ? ">" : " ");
+        lcd.setCursor(UI_MENU_LX, y); lcd.print(items[i]);      // label always at the same x
     }
 }
 
@@ -99,9 +131,9 @@ void dispShow(const char* header, const char* body, uint32_t color) {
     lcd.fillScreen(0x000000u);
     lcd.setTextWrap(true);
     lcd.setTextColor(lcd.color888((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF), 0x000000u);
-    lcd.setTextSize(3); lcd.setCursor(8, 8);  lcd.print(header);
+    lcd.setTextSize(UI_TS_TITLE); lcd.setCursor(UI_PAD, UI_TITLE_Y);  lcd.print(header);
     lcd.setTextColor(lcd.color888(0xC8, 0xD2, 0xDA), 0x000000u);
-    lcd.setTextSize(2); lcd.setCursor(8, 48); lcd.print(body);
+    lcd.setTextSize(UI_TS_BODY); lcd.setCursor(UI_PAD, UI_BODY_Y); lcd.print(body);
 }
 
 // Centered header + (multi-line) body — used for the OTA screen.
@@ -110,17 +142,17 @@ void dispCenter(const char* header, const char* body, uint32_t color) {
     lcd.setTextWrap(false);
     int W = lcd.width();
     lcd.setTextColor(lcd.color888((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF), 0x000000u);
-    lcd.setTextSize(3);
-    { int tw = lcd.textWidth(header); int x = (W - tw) / 2; if (x < 0) x = 0; lcd.setCursor(x, 12); lcd.print(header); }
+    lcd.setTextSize(UI_TS_TITLE);
+    { int tw = lcd.textWidth(header); int x = (W - tw) / 2; if (x < 0) x = 0; lcd.setCursor(x, UI_CTR_TY); lcd.print(header); }
     lcd.setTextColor(lcd.color888(0xC8, 0xD2, 0xDA), 0x000000u);
-    lcd.setTextSize(2);
-    String b = body; int start = 0, y = 60;
+    lcd.setTextSize(UI_TS_BODY);
+    String b = body; int start = 0, y = UI_CTR_BY;
     while (true) {
         int nl = b.indexOf('\n', start);
         String ln = (nl < 0) ? b.substring(start) : b.substring(start, nl);
         int tw = lcd.textWidth(ln.c_str()); int x = (W - tw) / 2; if (x < 0) x = 0;
         lcd.setCursor(x, y); lcd.print(ln);
-        y += 22;
+        y += UI_CTR_DY;
         if (nl < 0) break;
         start = nl + 1;
     }
@@ -131,15 +163,15 @@ void dispCmd(const char* header, const char* cmd) {
     lcd.fillScreen(0x000000u);
     lcd.setTextWrap(true);
     lcd.setTextColor(lcd.color888(0x22, 0xD3, 0xE0), 0x000000u);
-    lcd.setTextSize(2); lcd.setCursor(8, 8); lcd.print(header);
+    lcd.setTextSize(UI_TS_BODY); lcd.setCursor(UI_PAD, UI_TITLE_Y); lcd.print(header);
     lcd.setTextColor(lcd.color888(0xC8, 0xD2, 0xDA), 0x000000u);
-    lcd.setTextSize(1); lcd.setCursor(8, 34); lcd.print(cmd);
+    lcd.setTextSize(1); lcd.setCursor(UI_PAD, UI_BODY_Y); lcd.print(cmd);
 }
 
 // Persistent bottom status bar: PC / PHONE / USB-host as green (up) or red (down),
 // plus the total connection count.
 void dispBle(bool pc, bool phone, bool usb, bool autorun, int batt, int total) {
-    int y = lcd.height() - 24;
+    int y = lcd.height() - UI_BAR_H;
     // NB: color888() returns 24-bit RGB888 (uint32_t). Keep these uint32_t so
     // LovyanGFX reads them as RGB888 — truncating to uint16_t is read as RGB565
     // and shows the wrong colour (green -> purple, cyan -> orange).
@@ -147,7 +179,7 @@ void dispBle(bool pc, bool phone, bool usb, bool autorun, int batt, int total) {
     uint32_t amb = lcd.color888(0xF7, 0xC9, 0x48), red = lcd.color888(0xE5, 0x48, 0x4D);
     lcd.fillRect(0, y - 4, lcd.width(), 28, 0x000000u);
     lcd.drawFastHLine(0, y - 4, lcd.width(), lcd.color888(0x30, 0x36, 0x3d));
-    lcd.setTextSize(2); lcd.setCursor(8, y);
+    lcd.setTextSize(UI_BAR_TS); lcd.setCursor(UI_PAD, y);
     lcd.setTextColor(pc    ? on : dim, 0x000000u); lcd.print("PC");
     lcd.setTextColor(dim, 0x000000u);              lcd.print(" ");
     lcd.setTextColor(phone ? on : dim, 0x000000u); lcd.print("PH");
