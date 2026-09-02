@@ -15,3 +15,5 @@ bool bleArmBoot();                // auto-arm the target OS at boot (NVS; defaul
 void bleSetArmBoot(bool on);      // set + persist arm-at-boot
 int  bleFireDelay();              // ms to wait after a plug before firing (NVS; default 2000)
 void bleSetFireDelay(int ms);     // set + persist the fire delay
+int  bleTypeDelay();              // ms per character when typing STRING payloads (NVS; default 5)
+void bleSetTypeDelay(int ms);     // set + persist the per-char type delay

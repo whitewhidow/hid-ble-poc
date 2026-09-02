@@ -303,6 +303,17 @@ void bleSetFireDelay(int ms) {
     Preferences p; p.begin("poc", false); p.putUShort("firedelay", (uint16_t)ms); p.end();
 }
 
+static int32_t g_typeDelay = -1;
+int bleTypeDelay() {
+    if (g_typeDelay < 0) { Preferences p; p.begin("poc", true); g_typeDelay = p.getUShort("typedelay", 5); p.end(); }
+    return g_typeDelay;
+}
+void bleSetTypeDelay(int ms) {
+    if (ms < 0) ms = 0; if (ms > 100) ms = 100;   // 0 = as fast as Print; keep a small margin for slow hosts
+    g_typeDelay = ms;
+    Preferences p; p.begin("poc", false); p.putUShort("typedelay", (uint16_t)ms); p.end();
+}
+
 // Board-side control: drop every current BLE link (PC + phone), then re-advertise.
 void bleHidDropAll() {
     NimBLEServer* s = NimBLEDevice::getServer();
@@ -443,6 +454,11 @@ static void handleCmd(const char* cmd) {
     } else if (!strncmp(cmd, "__FDSET__:", 10)) {
         bleSetFireDelay(atoi(cmd + 10));
         char b[16]; snprintf(b, sizeof(b), "firedelay:%d", bleFireDelay()); ctrlNotify(b);
+    } else if (!strcmp(cmd, "__TDGET__")) {
+        char b[16]; snprintf(b, sizeof(b), "typedelay:%d", bleTypeDelay()); ctrlNotify(b);
+    } else if (!strncmp(cmd, "__TDSET__:", 10)) {
+        bleSetTypeDelay(atoi(cmd + 10));
+        char b[16]; snprintf(b, sizeof(b), "typedelay:%d", bleTypeDelay()); ctrlNotify(b);
     }
 }
 

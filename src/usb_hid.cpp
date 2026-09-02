@@ -86,7 +86,7 @@ const char* usbOsName(int os) {
     }
 }
 
-void usbHidType(const char* s) { for (const char* p = s; *p; ++p) { Keyboard.write((uint8_t)*p); delay(8); } }
+void usbHidType(const char* s) { int d = bleTypeDelay(); for (const char* p = s; *p; ++p) { Keyboard.write((uint8_t)*p); if (d) delay(d); } }
 
 static void tapGui(const String& arg) {
     Keyboard.press(KEY_LEFT_GUI);
