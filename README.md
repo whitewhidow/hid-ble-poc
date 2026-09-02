@@ -16,7 +16,7 @@ flags and sharing one firmware:
 | env | board | LCD | battery | notes |
 |-----|-------|-----|---------|-------|
 | `tembed`  | LilyGo T-Embed CC1101 | ST7789 320×170 | yes (BQ27220) | encoder button |
-| `tdongle` | LilyGo T-Dongle S3    | ST7735S 80×160 | no | plugs straight into USB-A · **pins UNVERIFIED until first boot** |
+| `tdongle` | LilyGo T-Dongle S3    | ST7735S 80×160 | no | plugs straight into USB-A · verified on hardware (smaller per-board UI metrics; menu drops **Sleep** since it's USB-powered) |
 
 - `POC_BOARD_*` picks display pins/panel + button; `POC_HAS_USB_HID` gates the USB side.
 - `display.cpp` parameterises panel type/size/offsets/frequency per board.
@@ -26,7 +26,8 @@ flags and sharing one firmware:
 
 - **Start menu** (single button — click = next, hold = select): **Autodetect**
   (LED-fingerprint the host OS over USB), **Linux / Windows / macOS** (force one),
-  and **Sleep** (deep sleep; a button tap wakes it and boots fresh).
+  and **Sleep** (deep sleep; a button tap wakes it and boots fresh — **T-Embed only**;
+  the USB-powered T-Dongle omits it, so its menu is Autodetect / Linux / Windows / macOS).
 - **Payloads** live on LittleFS as `data/<os>.txt` (tiny `GUI/STRING/ENTER/DELAY/
   CTRLALT` format) and are typed over USB when you fire an OS.
 - **Boot splash** shows the firmware version + board; the **status bar** shows the
@@ -73,7 +74,11 @@ holds native USB, so enter the bootloader by hand:
   the post-flash reset usually leaves it in the bootloader, so you can flash again
   without repeating this). Then tap **RST** to boot.
 - **T-Dongle S3** (no battery) — hold **BOOT** while plugging it into USB (a
-  power-on with GPIO0 low → download mode), then flash. *(UNVERIFIED.)*
+  power-on with GPIO0 low → download mode), then flash. The **first** flash from
+  factory firmware auto-resets fine, but once the PoC is running it holds native USB
+  in **USB-HID (TinyUSB) mode**, so esptool can no longer auto-reset it — every
+  reflash after that needs this BOOT-while-plugging step (else esptool reports
+  "No serial data received").
 
 > Do **not** trigger download mode from firmware (`FORCE_DOWNLOAD_BOOT`): the ROM
 > doesn't self-clear that flag and the T-Embed can't be cleanly power-cycled
