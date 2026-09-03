@@ -56,10 +56,9 @@
 
 <div id="app" hidden>
   <div class="tabs">
-    <button class="tab active" data-tab="type">Type</button>
-    <button class="tab" data-tab="keyboard">Keyboard</button>
-    <button class="tab" data-tab="payloads">Payloads</button>
+    <button class="tab active" data-tab="keyboard">Keyboard</button>
     <button class="tab" data-tab="devices">Devices</button>
+    <button class="tab" data-tab="payloads">Payloads</button>
     <button class="tab" data-tab="wifi">WiFi</button>
     <button class="tab" data-tab="update">Update</button>
     <button class="tab" data-tab="options">Options</button>
@@ -67,13 +66,7 @@
   </div>
 
 
-  <section id="tab-type">
-    <textarea id="text" rows="5" placeholder="text to type on the PC">hello from my phone</textarea>
-    <div class="row"><button id="send" style="flex:1">Send</button></div>
-    <div class="sub" style="margin:0">Runs over BLE-HID on the paired PC. Plain text is typed as-is; each line can also be an Evil Crow command — e.g. <code>GuiR</code>, <code>Delay 500</code>, <code>PrintLine whoami</code>, <code>RunWin notepad</code>, <code>Press KEY_ENTER</code>, <code>CtrlAltT</code>. Ctrl/⌘+Enter sends.</div>
-  </section>
-
-  <section id="tab-keyboard" hidden>
+  <section id="tab-keyboard">
     <div class="row" style="align-items:center;gap:10px;margin:0 0 8px">
       <span class="sub" style="flex:1;margin:0">On-screen keyboard — keys go to the</span>
       <select id="kbtarget" style="flex:0 0 auto;padding:8px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:14px">
@@ -83,6 +76,11 @@
     </div>
     <div id="osk"></div>
     <div class="sub" style="margin:8px 0 0">Shift latches; Ctrl / Alt / ⊞ apply to the next letter (e.g. Ctrl then C = Ctrl+C, ⊞ then R = Win+R). BLE needs the <b>BLE-HID</b> dot ●; USB needs the board plugged into that PC (<b>USB</b> dot ●).</div>
+
+    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Script / text — over BLE-HID</div>
+    <textarea id="text" rows="4" placeholder="text to type on the PC">hello from my phone</textarea>
+    <div class="row"><button id="send" style="flex:1">Send over BLE-HID</button></div>
+    <div class="sub" style="margin:0">Plain text is typed as-is; each line can also be an Evil Crow command — e.g. <code>GuiR</code>, <code>Delay 500</code>, <code>PrintLine whoami</code>, <code>RunWin notepad</code>, <code>Press KEY_ENTER</code>, <code>CtrlAltT</code>. Ctrl/⌘+Enter sends. Full list in the <b>Commands</b> tab.</div>
   </section>
 
   <section id="tab-payloads" hidden>
@@ -167,7 +165,7 @@
   </section>
 
   <section id="tab-help" hidden>
-    <div class="sub" style="margin:0 0 4px">Each line of the <b>Type</b> box is one command — Evil Crow Cable "Wind" syntax, run over BLE-HID. A line that isn't a command is typed literally. Case-sensitive.</div>
+    <div class="sub" style="margin:0 0 4px">Each line of the <b>script box</b> (Keyboard tab) is one command — Evil Crow Cable "Wind" syntax, run over BLE-HID. A line that isn't a command is typed literally. Case-sensitive.</div>
     <div class="ref">
       <h3>Type &amp; timing</h3>
       <div class="c"><code>Print &lt;text&gt;</code><span>Type text, no Enter.</span></div>
@@ -342,7 +340,7 @@ $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey
 // Tabs
 for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
   for (const x of document.querySelectorAll('.tab')) x.classList.toggle('active', x === t);
-  for (const id of ['type','keyboard','payloads','devices','wifi','update','options','help']) $('tab-' + id).hidden = (id !== t.dataset.tab);
+  for (const id of ['keyboard','payloads','devices','wifi','update','options','help']) $('tab-' + id).hidden = (id !== t.dataset.tab);
   if (['wifi','update','options'].includes(t.dataset.tab)) refreshSettings();
   if (t.dataset.tab === 'update') checkLatest();
 };
