@@ -548,11 +548,15 @@ static void handleCmd(const char* cmd) {
         if (usbHidMounted()) usbHidKey(cmd + 11);
 #endif
     } else if (!strncmp(cmd, "__BLECC__:", 10)) {
-        uint16_t u = ccResolve(cmd + 10); if (u) bleConsumer(u); else ctrlNotify("cc: unknown");
+        uint16_t u = ccResolve(cmd + 10);
+        if (!u) ctrlNotify("cc: unknown");
+        else { char b[48]; snprintf(b, sizeof(b), "cc: %s (0x%X) ble", cmd + 10, u); ctrlNotify(b); bleConsumer(u); }
     } else if (!strncmp(cmd, "__USBCC__:", 10)) {
 #ifdef POC_HAS_USB_HID
         uint16_t u = ccResolve(cmd + 10);
-        if (!u) ctrlNotify("cc: unknown"); else if (usbHidMounted()) usbConsumer(u); else ctrlNotify("usb: no host");
+        if (!u) ctrlNotify("cc: unknown");
+        else if (!usbHidMounted()) ctrlNotify("usb: no host");
+        else { char b[48]; snprintf(b, sizeof(b), "cc: %s (0x%X) usb", cmd + 10, u); ctrlNotify(b); usbConsumer(u); }
 #else
         ctrlNotify("usb: no usb-hid on this board");
 #endif
