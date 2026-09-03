@@ -518,7 +518,7 @@ $('drop').onclick = async () => { if (confirm('Disconnect all current BLE links?
 function plStat(m){ $('plstat').textContent = m; }
 let libNames = [];            // library payload names
 let curLib = null;            // name loaded in the editor
-let slotMap = { linux:'', windows:'', macos:'' };
+let slotMap = { linux:'', windows:'', macos:'', custom:'' };
 let libBuf = '';              // accumulates pldat: chunks
 const OSES = ['linux','windows','macos','custom'];
 const OSLBL = { linux:'Linux', windows:'Windows', macos:'Macos', custom:'Custom' };
@@ -534,7 +534,7 @@ function renderLib(csv){
   for (const s of document.querySelectorAll('.slotsel')) fillSlotSel(s, slotMap[s.dataset.os]);
 }
 function renderSlots(str){
-  slotMap = { linux:'', windows:'', macos:'' };
+  slotMap = {}; for (const os of OSES) slotMap[os] = '';   // include 'custom' — was dropped by a linux/windows/macos-only reset
   for (const part of str.split(';')){ const [os, n] = part.split('='); if (os in slotMap) slotMap[os] = n || ''; }
   buildSlotRows();
 }
