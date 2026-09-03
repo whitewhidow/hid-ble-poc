@@ -81,7 +81,7 @@ static int batteryPct() {
 static int batteryPct() { return -1; }
 #endif
 
-static void statusBar() { dispBle(bleHidConnected(), bleHidPhone(), usbHost(), bleAutorun(), batteryPct(), bleHidConnCount()); }
+static void statusBar() { dispBle(bleHidConnected(), bleHidPhone(), usbHost(), bleAutorun(), bleArmBoot(), bleTargetOs(), batteryPct(), bleHidConnCount()); }
 
 static void drawMenu() {
     dispMenu("SELECT OS", ITEMS, NITEMS, sel);

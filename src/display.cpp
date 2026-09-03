@@ -174,7 +174,7 @@ void dispCmd(const char* header, const char* cmd) {
 
 // Persistent bottom status bar: PC / PHONE / USB-host as green (up) or red (down),
 // plus the total connection count.
-void dispBle(bool pc, bool phone, bool usb, bool autorun, int batt, int total) {
+void dispBle(bool pc, bool phone, bool usb, bool autorun, bool armboot, int targetOs, int batt, int total) {
     int y = lcd.height() - UI_BAR_H;
     // NB: color888() returns 24-bit RGB888 (uint32_t). Keep these uint32_t so
     // LovyanGFX reads them as RGB888 — truncating to uint16_t is read as RGB565
@@ -189,9 +189,11 @@ void dispBle(bool pc, bool phone, bool usb, bool autorun, int batt, int total) {
     lcd.setTextColor(phone ? on : dim, 0x000000u); lcd.print("PH");
     lcd.setTextColor(dim, 0x000000u);              lcd.print(" ");
     lcd.setTextColor(usb   ? on : dim, 0x000000u); lcd.print("USB");
-    char t[10]; snprintf(t, sizeof(t), " [%d]", total);
-    lcd.setTextColor(dim, 0x000000u);              lcd.print(t);
+    (void)total;                                                                          // connection count no longer shown
     lcd.setTextColor(autorun ? amb : dim, 0x000000u); lcd.print(autorun ? " A" : " M");   // Auto / Manual
+    lcd.setTextColor(armboot ? amb : dim, 0x000000u); lcd.print(" AB");                    // arm-at-boot on(amber)/off(dim)
+    const char* tl = targetOs == 1 ? "L" : targetOs == 2 ? "W" : targetOs == 3 ? "M" : "D"; // target OS: Linux/Win/Mac/Detect
+    lcd.setTextColor(lcd.color888(0x5a, 0xA9, 0xFF), 0x000000u); lcd.print(tl);
     // Battery gauge on the right (hidden when batt<0 — C5, or no fuel gauge).
     if (batt >= 0) {
         uint32_t col = batt > 50 ? on : (batt > 20 ? amb : red);

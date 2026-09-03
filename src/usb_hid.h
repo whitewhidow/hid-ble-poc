@@ -14,11 +14,21 @@ bool pocFsWriteBegin(const char* os);                 // open for write (truncat
 bool pocFsWriteChunk(const uint8_t* data, size_t n);  // append bytes to the open file
 bool pocFsWriteEnd(size_t& sizeOut);                  // close; sizeOut = bytes written
 
+// Payload library (arbitrary named payloads) + which one is loaded into each OS
+// slot. Real on POC_HAS_USB_HID (LittleFS); stubbed to empty/false on the C5.
+String pocLibList();                                  // '\n'-joined payload names
+bool   pocLibRead(const char* name, String& out);     // read a library payload
+bool   pocLibWriteBegin(const char* name);            // open a library payload for write, then pocFsWriteChunk/End
+bool   pocLibDelete(const char* name);                // delete a library payload
+bool   pocLibLoadToSlot(const char* name, const char* os);  // copy lib payload -> the OS slot file
+String pocSlotAssignments();                          // "linux=<n>;windows=<n>;macos=<n>"
+
 #ifdef POC_HAS_USB_HID
 int         usbDetectOS();
 const char* usbOsName(int os);
 void        usbHidType(const char* s);
 void        usbHidKey(const char* shortName);        // one nav/special key over USB
 void        usbHidChord(const char* mods, char ch);  // modifier(c/a/g)+char chord over USB
+void        usbRunScript(const char* s);             // run an Evil-Crow script string over USB
 void        usbSamplePayload(int os);   // runs the OS's payload file from LittleFS
 #endif

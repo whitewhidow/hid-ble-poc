@@ -11,6 +11,12 @@ bool pocFsWriteBegin(const char*)           { return false; }
 bool pocFsWriteChunk(const uint8_t*, size_t){ return false; }
 bool pocFsWriteEnd(size_t&)                 { return false; }
 bool usbHidMounted()                        { return false; }   // no USB device role here
+String pocLibList()                         { return String(); }
+bool pocLibRead(const char*, String&)       { return false; }
+bool pocLibWriteBegin(const char*)          { return false; }
+bool pocLibDelete(const char*)              { return false; }
+bool pocLibLoadToSlot(const char*, const char*) { return false; }
+String pocSlotAssignments()                 { return String(); }
 
 #else
 // ---- S3 / real USB HID: OS detection + LittleFS payload interpreter -----------
@@ -225,6 +231,8 @@ extern "C" bool tud_mounted(void);
 extern "C" bool tud_suspended(void);
 bool usbHidMounted() { return tud_mounted() && !tud_suspended(); }
 
+void usbRunScript(const char* s) { usbRunPayloadContent(String(s)); }
+
 void usbSamplePayload(int os) {
     String content;
     File f = LittleFS.open(osPath(os), "r");           // on-FS file (user edit) wins if non-empty
@@ -268,6 +276,92 @@ bool pocFsWriteEnd(size_t& sizeOut) {
     sizeOut = s_wn; s_wf.close(); return true;
 }
 
+// ---- Payload library: arbitrary named payloads in /pl_<name>.txt ------------
+#include <Preferences.h>
+static bool libValid(const char* n) {
+    if (!n || !*n) return false;
+    if (strlen(n) > 24) return false;
+    for (const char* p = n; *p; p++) {
+        char c = *p;
+        if (!((c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='_'||c=='-')) return false;
+    }
+    return true;
+}
+static bool libPath(const char* n, char* out, size_t sz) {
+    if (!libValid(n)) return false;
+    snprintf(out, sz, "/pl_%s.txt", n); return true;
+}
+String pocLibList() {
+    LittleFS.begin(true, "/littlefs", 10, "littlefs");
+    String out; File root = LittleFS.open("/");
+    if (!root) return out;
+    for (File f = root.openNextFile(); f; f = root.openNextFile()) {
+        String nm = f.name();
+        int slash = nm.lastIndexOf('/'); if (slash >= 0) nm = nm.substring(slash + 1);
+        if (nm.startsWith("pl_") && nm.endsWith(".txt")) { out += nm.substring(3, nm.length() - 4); out += "\n"; }
+    }
+    return out;
+}
+bool pocLibRead(const char* name, String& out) {
+    char p[40]; if (!libPath(name, p, sizeof(p))) return false;
+    LittleFS.begin(true, "/littlefs", 10, "littlefs");
+    File f = LittleFS.open(p, "r"); out = "";
+    if (!f) return false;
+    out.reserve(f.size()); while (f.available()) out += (char)f.read(); f.close();
+    return true;
+}
+bool pocLibWriteBegin(const char* name) {
+    char p[40]; if (!libPath(name, p, sizeof(p))) return false;
+    LittleFS.begin(true, "/littlefs", 10, "littlefs");
+    s_wf = LittleFS.open(p, "w"); s_wn = 0; return (bool)s_wf;
+}
+bool pocLibDelete(const char* name) {
+    char p[40]; if (!libPath(name, p, sizeof(p))) return false;
+    LittleFS.begin(true, "/littlefs", 10, "littlefs");
+    return LittleFS.remove(p);
+}
+bool pocLibLoadToSlot(const char* name, const char* os) {
+    char lp[40], sp[24];
+    if (!libPath(name, lp, sizeof(lp)) || !fsPath(os, sp, sizeof(sp))) return false;
+    LittleFS.begin(true, "/littlefs", 10, "littlefs");
+    File in = LittleFS.open(lp, "r"); if (!in) return false;
+    File out = LittleFS.open(sp, "w"); if (!out) { in.close(); return false; }
+    uint8_t buf[128]; size_t n;
+    while ((n = in.read(buf, sizeof(buf))) > 0) out.write(buf, n);
+    in.close(); out.close();
+    Preferences pr; pr.begin("poc", false);
+    char key[16]; snprintf(key, sizeof(key), "sl_%s", os); pr.putString(key, name); pr.end();
+    return true;
+}
+String pocSlotAssignments() {
+    Preferences pr; pr.begin("poc", true);
+    String r; const char* oses[] = { "linux", "windows", "macos" };
+    for (int i = 0; i < 3; i++) {
+        char key[16]; snprintf(key, sizeof(key), "sl_%s", oses[i]);
+        if (i) r += ";";
+        r += String(oses[i]) + "=" + pr.getString(key, "");
+    }
+    pr.end();
+    return r;
+}
+// First run on new firmware: copy the three slot files into the library and default
+// each slot's assignment to its namesake, so the manager starts populated.
+static void libSeedFromSlots() {
+    if (pocLibList().length() > 0) return;
+    const char* oses[] = { "linux", "windows", "macos" };
+    for (auto os : oses) {
+        char lp[40], sp[24];
+        snprintf(lp, sizeof(lp), "/pl_%s.txt", os); snprintf(sp, sizeof(sp), "/%s.txt", os);
+        File in = LittleFS.open(sp, "r"); if (!in) continue;
+        File out = LittleFS.open(lp, "w"); if (!out) { in.close(); continue; }
+        uint8_t buf[128]; size_t n; while ((n = in.read(buf, sizeof(buf))) > 0) out.write(buf, n);
+        in.close(); out.close();
+    }
+    Preferences pr; pr.begin("poc", false);
+    pr.putString("sl_linux", "linux"); pr.putString("sl_windows", "windows"); pr.putString("sl_macos", "macos");
+    pr.end();
+}
+
 // (Re)create a payload file if it is missing OR empty (0-byte files were the cause
 // of "payloads gone"); a real, non-empty user file is kept.
 static void seedPayload(int os) {
@@ -290,6 +384,7 @@ void usbHidBegin() {
     if (!t) { Serial.println("[fs] write-test FAIL -> format"); LittleFS.format(); LittleFS.begin(true, "/littlefs", 10, "littlefs"); }
     else    { t.close(); LittleFS.remove("/.wtest"); }
     seedPayload(POC_OS_LINUX); seedPayload(POC_OS_WINDOWS); seedPayload(POC_OS_MACOS);
+    libSeedFromSlots();
     USB.onEvent(usbEventCallback);
     Keyboard.onEvent(usbEventCallback);
     USB.begin();

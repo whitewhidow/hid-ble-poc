@@ -25,7 +25,7 @@ static char          g_pending[512] = "";        // script/text from the phone, 
 static volatile bool g_hasPending = false;
 static volatile bool g_ctrlReady = false;        // a phone has written to the control service
 static uint16_t      g_phoneHandle = 0xFFFF;     // conn handle of that phone
-static char          g_cmd[220] = "";            // pending control command (also carries file-write chunks)
+static char          g_cmd[560] = "";            // pending control command (file-write chunks + __USBRUN__ scripts)
 static volatile bool g_cmdReq  = false;
 
 static const uint8_t REPORT_MAP[] = {
@@ -511,6 +511,12 @@ static void handleCmd(const char* cmd) {
 #ifdef POC_HAS_USB_HID
         if (usbHidMounted()) usbHidKey(cmd + 11);
 #endif
+    } else if (!strncmp(cmd, "__USBRUN__:", 11)) {
+#ifdef POC_HAS_USB_HID
+        if (usbHidMounted()) usbRunScript(cmd + 11); else ctrlNotify("usb: no host");
+#else
+        ctrlNotify("usb: no usb-hid on this board");
+#endif
     } else if (!strncmp(cmd, "__USBCHORD__:", 13)) {
 #ifdef POC_HAS_USB_HID
         const char* p = cmd + 13; const char* colon = strchr(p, ':');
@@ -538,6 +544,33 @@ static void handleCmd(const char* cmd) {
 #else
         ctrlNotify("usb: no usb-hid on this board");
 #endif
+    } else if (!strcmp(cmd, "__PLLIST__")) {
+        String l = pocLibList(); l.replace("\n", ",");
+        if (l.endsWith(",")) l.remove(l.length() - 1);
+        ctrlNotify((String("pllist:") + l).c_str());
+    } else if (!strcmp(cmd, "__PLSLOTS__")) {
+        ctrlNotify((String("slots:") + pocSlotAssignments()).c_str());
+    } else if (!strncmp(cmd, "__PLGET__:", 10)) {
+        const char* name = cmd + 10; String c;
+        if (!pocLibRead(name, c)) { ctrlNotify("plerr:read"); }
+        else {
+            String hdr = "plbeg:"; hdr += name; hdr += ":"; hdr += c.length(); ctrlNotify(hdr.c_str());
+            delay(20);
+            const size_t CK = 160;
+            for (size_t i = 0; i < c.length(); i += CK) {
+                size_t n = (c.length() - i < CK) ? (c.length() - i) : CK;
+                String d = "pldat:"; d += c.substring(i, i + n); ctrlNotify(d.c_str()); delay(20);
+            }
+            String end = "plend:"; end += name; ctrlNotify(end.c_str());
+        }
+    } else if (!strncmp(cmd, "__PLPUT__:", 10)) {
+        ctrlNotify(pocLibWriteBegin(cmd + 10) ? "wok" : "ferr:open");   // then __W__ chunks + __WEND__
+    } else if (!strncmp(cmd, "__PLDEL__:", 10)) {
+        ctrlNotify(pocLibDelete(cmd + 10) ? "pldel:ok" : "pldel:err");
+    } else if (!strncmp(cmd, "__PLLOAD__:", 11)) {
+        const char* a = cmd + 11; const char* colon = strchr(a, ':');
+        if (!colon) ctrlNotify("plload:err");
+        else { String name(a, colon - a); ctrlNotify(pocLibLoadToSlot(name.c_str(), colon + 1) ? "plload:ok" : "plload:err"); }
     }
 }
 

@@ -67,36 +67,38 @@
 
 
   <section id="tab-keyboard">
-    <div class="row" style="align-items:center;gap:10px;margin:0 0 8px">
-      <span class="sub" style="flex:1;margin:0">On-screen keyboard — keys go to the</span>
-      <select id="kbtarget" style="flex:0 0 auto;padding:8px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:14px">
-        <option value="ble">BLE-HID PC</option>
-        <option value="usb">USB PC</option>
-      </select>
-    </div>
+    <div class="sub" style="margin:0 0 6px">Keys and the script below go to:</div>
+    <select id="kbtarget" style="width:100%;padding:10px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:15px;margin-bottom:12px">
+      <option value="ble">BLE-HID PC</option>
+      <option value="usb">USB PC</option>
+    </select>
     <div id="osk"></div>
     <div class="sub" style="margin:8px 0 0">Shift latches; Ctrl / Alt / ⊞ apply to the next letter (e.g. Ctrl then C = Ctrl+C, ⊞ then R = Win+R). BLE needs the <b>BLE-HID</b> dot ●; USB needs the board plugged into that PC (<b>USB</b> dot ●).</div>
 
-    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Script / text — over BLE-HID</div>
+    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Script / text</div>
     <textarea id="text" rows="4" placeholder="text to type on the PC">hello from my phone</textarea>
     <div class="row"><button id="send" style="flex:1">Send over BLE-HID</button></div>
     <div class="sub" style="margin:0">Plain text is typed as-is; each line can also be an Evil Crow command — e.g. <code>GuiR</code>, <code>Delay 500</code>, <code>PrintLine whoami</code>, <code>RunWin notepad</code>, <code>Press KEY_ENTER</code>, <code>CtrlAltT</code>. Ctrl/⌘+Enter sends. Full list in the <b>Commands</b> tab.</div>
   </section>
 
   <section id="tab-payloads" hidden>
-    <div class="sub" style="margin:0 0 8px">Edit the keystroke payload the board types on the PC, per OS. Saved straight to the board's filesystem — no reflash. (T-Embed only.)</div>
-    <div class="row" id="osrow">
-      <button class="sec os" data-os="linux" style="flex:1">Linux</button>
-      <button class="sec os" data-os="windows" style="flex:1">Windows</button>
-      <button class="sec os" data-os="macos" style="flex:1">Macos</button>
+    <div class="sub" style="margin:0 0 8px">Payload library — edit any payload, add new ones, then <b>load</b> one into each OS slot (a slot is what the board fires for that OS). Saved to the board's filesystem, no reflash. (T-Embed only.)</div>
+    <div class="row" style="gap:8px">
+      <select id="pllist" style="flex:1;padding:10px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:15px"></select>
+      <button id="plnew" class="sec">+ New</button>
+      <button id="pldel" class="warn">Delete</button>
     </div>
-    <textarea id="payload" rows="8" placeholder="load an OS above to edit its payload…"
+    <textarea id="libtext" rows="8" placeholder="select a payload above, or + New…"
       style="font:13px/1.5 ui-monospace,monospace" disabled></textarea>
     <div class="row">
       <span id="plstat" class="sub" style="flex:1;margin:0"></span>
-      <button id="plsave" disabled>Save to board</button>
+      <button id="plsave" disabled>Save</button>
     </div>
-    <div class="sub" style="margin:12px 0 4px">⚡ Fire the saved payload out of the board's <b>USB</b> into the plugged-in PC (T-Embed only; the board must be plugged into that PC over USB):</div>
+
+    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 8px">OS slots — which payload the board fires</div>
+    <div id="slotrows"></div>
+
+    <div class="sub" style="margin:14px 0 4px">⚡ Fire the slot's payload out of the board's <b>USB</b> into the plugged-in PC:</div>
     <div class="row" id="usbrow">
       <button class="sec usbfire" data-os="linux" style="flex:1">Linux</button>
       <button class="sec usbfire" data-os="windows" style="flex:1">Windows</button>
@@ -247,7 +249,7 @@ function waitFor(match, timeout=4000){
 // queries overwrite each other — space them out.
 async function refreshSettings(){
   for (const c of ['__VER__','__AUTOGET__','__ABGET__','__OSGET__','__FDGET__','__TDGET__','__WIFIST__']) {
-    sendCmd(c); await new Promise(r => setTimeout(r, 170));
+    sendCmd(c); await new Promise(r => setTimeout(r, 200));
   }
 }
 // Built-in default payloads (mirror the firmware) so a missing file can be restored
@@ -298,14 +300,16 @@ $('connect').onclick = async () => {
     await txCh.startNotifications();
     txCh.addEventListener('characteristicvaluechanged', e => {
       const v = new TextDecoder().decode(e.target.value);
-      // File-read framing: fbeg -> fdat* -> fend. Accumulate here.
-      if (v.startsWith('fbeg:')) { fileBuf = ''; return; }
-      if (v.startsWith('fdat:')) { fileBuf += v.slice(5); return; }
-      if (v.startsWith('fend:')) {
-        $('payload').value = fileBuf;
+      // Library payload framing: plbeg -> pldat* -> plend. Accumulate here.
+      if (v.startsWith('plbeg:')) { libBuf = ''; return; }
+      if (v.startsWith('pldat:')) { libBuf += v.slice(6); return; }
+      if (v.startsWith('plend:')) {
+        $('libtext').value = libBuf;
         if (waiter && waiter.match(v)) waiter.resolve(v);
         return;
       }
+      if (v.startsWith('pllist:')) { renderLib(v.slice(7)); return; }
+      if (v.startsWith('slots:'))  { renderSlots(v.slice(6)); return; }
       if (waiter && waiter.match(v)) { waiter.resolve(v); return; }
       if (v.startsWith('wifi:')) { renderWifi(v); return; }
       if (v.startsWith('ota:'))  { renderOta(v);  return; }
@@ -323,19 +327,24 @@ $('connect').onclick = async () => {
     $('hdr').hidden = false; $('hdrConn').textContent = '● ' + (dev.name || 'PoC-KBD');
     $('connect').hidden = true; $('app').hidden = false;
     sendCmd('__BONDS__');                                   // list now
-    setTimeout(() => sendCmd('__MAC__'), 120);              // board BLE MAC
-    setTimeout(() => sendCmd('__STATUS__'), 240);           // USB / BLE-HID transport dots
-    refreshSettings();                                      // reflect saved settings (spaced out)
+    setTimeout(() => sendCmd('__MAC__'), 150);              // board BLE MAC
+    setTimeout(() => sendCmd('__STATUS__'), 300);           // USB / BLE-HID transport dots
+    setTimeout(refreshSettings, 500);                       // then settings incl. fw (spaced; avoids clobbering the trio)
     refreshTimer = setInterval(() => { if (!busy) sendCmd('__BONDS__'); }, 3000);   // auto-refresh (paused during file ops)
   } catch (e) { $('stat').textContent = '✖ ' + e.message; }
 };
 
 async function send(){
   const t = $('text').value; if (!t || !rxCh) return;
-  try { await sendCmd(t); log('sent: ' + t); } catch (e) { log('✖ ' + e.message); }
+  const first = t.split('\n')[0] + (t.includes('\n') ? ' …' : '');
+  try {
+    if (kbT() === 'usb') { await sendCmd('__USBRUN__:' + t); log('usb-run: ' + first); }
+    else { await sendCmd(t); log('ble-sent: ' + first); }
+  } catch (e) { log('✖ ' + e.message); }
 }
 $('send').onclick = send;
 $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } });
+$('kbtarget').onchange = () => { $('send').textContent = 'Send over ' + (kbT() === 'usb' ? 'USB' : 'BLE-HID'); };
 
 // Tabs
 for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
@@ -343,6 +352,7 @@ for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
   for (const id of ['keyboard','payloads','devices','wifi','update','options','help']) $('tab-' + id).hidden = (id !== t.dataset.tab);
   if (['wifi','update','options'].includes(t.dataset.tab)) refreshSettings();
   if (t.dataset.tab === 'update') checkLatest();
+  if (t.dataset.tab === 'payloads') refreshLib();
 };
 
 // ---- transport status dots (st:ble=1:usb=0) ------------------------------
@@ -478,58 +488,126 @@ $('otaRun').onclick = async () => {
 $('list').onclick = () => sendCmd('__BONDS__');
 $('drop').onclick = async () => { if (confirm('Disconnect all current BLE links?')) await sendCmd('__DROP__'); };
 
-// ---- OS payload editing --------------------------------------------------
+// ---- payload library manager ---------------------------------------------
 function plStat(m){ $('plstat').textContent = m; }
+let libNames = [];            // library payload names
+let curLib = null;            // name loaded in the editor
+let slotMap = { linux:'', windows:'', macos:'' };
+let libBuf = '';              // accumulates pldat: chunks
+const OSES = ['linux','windows','macos'];
+const OSLBL = { linux:'Linux', windows:'Windows', macos:'Macos' };
 
-async function loadPayload(os){
+function refreshLib(){ if (!rxCh) return; sendCmd('__PLLIST__'); setTimeout(() => sendCmd('__PLSLOTS__'), 200); }
+
+function renderLib(csv){
+  libNames = csv ? csv.split(',').filter(Boolean) : [];
+  const sel = $('pllist'); sel.innerHTML = '';
+  if (!libNames.length) { const o = document.createElement('option'); o.value=''; o.textContent='(no payloads — + New)'; sel.appendChild(o); }
+  for (const n of libNames){ const o = document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); }
+  if (curLib && libNames.includes(curLib)) sel.value = curLib;
+  for (const s of document.querySelectorAll('.slotsel')) fillSlotSel(s, slotMap[s.dataset.os]);
+}
+function renderSlots(str){
+  slotMap = { linux:'', windows:'', macos:'' };
+  for (const part of str.split(';')){ const [os, n] = part.split('='); if (os in slotMap) slotMap[os] = n || ''; }
+  buildSlotRows();
+}
+function fillSlotSel(sel, current){
+  sel.innerHTML = '';
+  for (const n of libNames){ const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); }
+  if (current && !libNames.includes(current)){ const o=document.createElement('option'); o.value=current; o.textContent=current+' (missing)'; sel.appendChild(o); }
+  if (current) sel.value = current;
+}
+function buildSlotRows(){
+  const box = $('slotrows'); if (!box) return; box.innerHTML = '';
+  for (const os of OSES){
+    const row = document.createElement('div'); row.className='row'; row.style.alignItems='center'; row.style.gap='8px';
+    const lbl = document.createElement('span'); lbl.style.flex='0 0 64px'; lbl.textContent = OSLBL[os];
+    const sel = document.createElement('select'); sel.className='slotsel'; sel.dataset.os=os;
+    sel.style.cssText='flex:1;padding:8px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:14px';
+    fillSlotSel(sel, slotMap[os]);
+    const btn = document.createElement('button'); btn.className='sec'; btn.textContent='Load'; btn.onclick = () => loadSlot(os, sel.value);
+    row.append(lbl, sel, btn); box.appendChild(row);
+  }
+}
+async function loadLib(name){
+  if (!rxCh || busy || !name) return;
+  busy = true; curLib = name; libBuf = '';
+  $('libtext').value=''; $('libtext').disabled=true; $('plsave').disabled=true;
+  plStat('loading ' + name + '…');
+  try {
+    await sendCmd('__PLGET__:' + name);
+    const r = await waitFor(v => v === 'plend:' + name || v === 'plerr:read');
+    $('libtext').disabled=false; $('plsave').disabled=false;
+    plStat(r==='plerr:read' ? 'could not read ' + name : 'editing ' + name + ' (' + $('libtext').value.length + ' bytes)');
+  } catch(e){ plStat('✖ ' + e.message); }
+  finally { busy=false; }
+}
+async function writeFile(putCmd, text){
+  const enc = new TextEncoder().encode(text), pfx = new TextEncoder().encode('__W__:');
+  await sendReliable(new TextEncoder().encode(putCmd));
+  let a = await waitFor(v => v === 'wok' || v.startsWith('ferr'));
+  if (a.startsWith('ferr')) throw new Error(a);
+  for (let i=0;i<enc.length;i+=160){
+    const slice = enc.slice(i,i+160), buf = new Uint8Array(pfx.length+slice.length);
+    buf.set(pfx,0); buf.set(slice,pfx.length);
+    await sendReliable(buf);
+    a = await waitFor(v => v === 'wok' || v.startsWith('ferr'));
+    if (a.startsWith('ferr')) throw new Error(a);
+  }
+  await sendReliable(new TextEncoder().encode('__WEND__'));
+  return waitFor(v => v.startsWith('fdone:') || v.startsWith('ferr'));
+}
+async function saveLib(){
+  if (!rxCh || busy || !curLib) return;
+  busy = true; $('plsave').disabled=true; plStat('saving ' + curLib + '…');
+  try {
+    const r = await writeFile('__PLPUT__:' + curLib, $('libtext').value);
+    plStat(r.startsWith('fdone:') ? '✔ saved ' + curLib + ' (' + r.slice(6) + ' bytes)' : '✖ ' + r);
+  } catch(e){ plStat('✖ ' + e.message); }
+  finally { busy=false; $('plsave').disabled=false; }
+}
+async function newLib(){
   if (!rxCh || busy) return;
-  busy = true; curOS = os;
-  fileBuf = '';                 // reset here, don't rely on the board's fbeg frame
-  $('payload').value = '';
-  $('payload').disabled = true; $('plsave').disabled = true;
-  plStat('loading ' + os + '…');
-  try {
-    await sendCmd('__GET__:' + os);
-    const r = await waitFor(v => v === 'fend:' + os || v === 'ferr:read');
-    $('payload').disabled = false; $('plsave').disabled = false;
-    if (r === 'ferr:read') {                         // missing on the board -> offer the default
-      $('payload').value = DEFAULTS[os] || '';
-      plStat('not on board — loaded default; tap "Save to board" to restore');
-    } else {
-      plStat('editing ' + os + '.txt (' + $('payload').value.length + ' bytes)');
-    }
-    for (const b of document.querySelectorAll('.os')) b.style.borderColor = b.dataset.os === os ? '#22d3e0' : '#30363d';
-  } catch (e) { plStat('✖ ' + e.message); }
-  finally { busy = false; }
+  let name = prompt('New payload name (letters, digits, _ or -, max 24):');
+  if (name == null) return; name = name.trim();
+  if (!/^[A-Za-z0-9_-]{1,24}$/.test(name)) { plStat('✖ invalid name'); return; }
+  if (libNames.includes(name)) { curLib = name; $('pllist').value = name; loadLib(name); return; }
+  busy = true;
+  try { await writeFile('__PLPUT__:' + name, '# ' + name + ' payload\n'); curLib = name; plStat('✔ created ' + name); }
+  catch(e){ plStat('✖ ' + e.message); }
+  finally { busy=false; }
+  refreshLib(); setTimeout(() => loadLib(name), 500);
 }
-
-async function savePayload(){
-  if (!rxCh || busy || !curOS) return;
-  busy = true; $('plsave').disabled = true;
-  const enc = new TextEncoder().encode($('payload').value);
-  const pfx = new TextEncoder().encode('__W__:');
-  plStat('saving ' + curOS + '… (' + enc.length + ' bytes)');
+async function delLib(){
+  const name = $('pllist').value;
+  if (!rxCh || busy || !name || !libNames.includes(name)) return;
+  if (!confirm('Delete payload "' + name + '"? (a slot loaded from it keeps its copy)')) return;
+  busy = true;
   try {
-    await sendReliable(new TextEncoder().encode('__PUT__:' + curOS));
-    let a = await waitFor(v => v === 'wok' || v.startsWith('ferr'));
-    if (a.startsWith('ferr')) throw new Error(a + ' (board filesystem broken — reflash the FS)');
-    for (let i = 0; i < enc.length; i += 160) {
-      const slice = enc.slice(i, i + 160);
-      const buf = new Uint8Array(pfx.length + slice.length);
-      buf.set(pfx, 0); buf.set(slice, pfx.length);
-      await sendReliable(buf);
-      a = await waitFor(v => v === 'wok' || v.startsWith('ferr'));
-      if (a.startsWith('ferr')) throw new Error(a);
-    }
-    await sendReliable(new TextEncoder().encode('__WEND__'));
-    const r = await waitFor(v => v.startsWith('fdone:') || v.startsWith('ferr'));
-    plStat(r.startsWith('fdone:') ? '✔ saved ' + curOS + '.txt (' + r.slice(6) + ' bytes)' : '✖ ' + r);
-  } catch (e) { plStat('✖ ' + e.message); }
-  finally { busy = false; $('plsave').disabled = false; }
+    await sendCmd('__PLDEL__:' + name);
+    await waitFor(v => v.startsWith('pldel:'));
+    if (curLib === name) { curLib = null; $('libtext').value=''; $('libtext').disabled=true; $('plsave').disabled=true; }
+    plStat('deleted ' + name);
+  } catch(e){ plStat('✖ ' + e.message); }
+  finally { busy=false; }
+  refreshLib();
 }
-
-for (const b of document.querySelectorAll('.os')) b.onclick = () => loadPayload(b.dataset.os);
-$('plsave').onclick = savePayload;
+async function loadSlot(os, name){
+  if (!rxCh || busy || !name) return;
+  busy = true; plStat('loading ' + name + ' → ' + os + ' slot…');
+  try {
+    await sendCmd('__PLLOAD__:' + name + ':' + os);
+    const r = await waitFor(v => v.startsWith('plload:'));
+    plStat(r === 'plload:ok' ? '✔ ' + os + ' slot ← ' + name : '✖ ' + r);
+  } catch(e){ plStat('✖ ' + e.message); }
+  finally { busy=false; }
+  setTimeout(() => sendCmd('__PLSLOTS__'), 200);
+}
+$('pllist').onchange = () => { const n = $('pllist').value; if (n) loadLib(n); };
+$('plnew').onclick = newLib;
+$('pldel').onclick = delLib;
+$('plsave').onclick = saveLib;
 </script>
 </body>
 </html>
