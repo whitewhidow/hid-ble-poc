@@ -13,7 +13,7 @@
 #include <Preferences.h>   // persist the AUTORUN setting in NVS
 #include <NimBLEDevice.h>
 
-extern void pocRequestFwSwitch();   // main.cpp: flag a firmware switch + reboot
+extern void pocRequestFwFetch(bool self);   // main.cpp: flag a reboot-to-fetch (self/switch)
 #include <NimBLEHIDDevice.h>
 
 // Custom control service (the phone connects here; Web Bluetooth can't touch HID).
@@ -424,19 +424,6 @@ void bleHidDropAll() {
 //   __BONDS__            -> reply "bonds:0=aa:bb..;1=cc:dd.." (per-device list)
 //   __FORGET__:<index>   -> delete that ONE bond (+ disconnect it if connected)
 //   __FORGETALL__        -> wipe every bond
-static char g_otaVer[16] = "";   // target version the phone told us we're installing
-
-// OTA progress -> LCD (with the target version) + a throttled BLE notify.
-static void otaProgress(int pct, const char* msg) {
-    static int last = -1;
-    if (pct == last) return;
-    if (pct == 0 || pct == 100 || pct / 5 != last / 5) {
-        char hdr[24]; snprintf(hdr, sizeof(hdr), g_otaVer[0] ? "OTA v%s" : "OTA UPDATE%s", g_otaVer);
-        char b[72]; snprintf(b, sizeof(b), "%d%%\n%s", pct, msg); dispCenter(hdr, b, 0xF7C948);
-        char n[80]; snprintf(n, sizeof(n), "ota:%d %s", pct, msg); ctrlNotify(n);
-    }
-    last = pct;
-}
 
 static void handleCmd(const char* cmd) {
     if (!strcmp(cmd, "__BONDS__")) {
@@ -524,19 +511,17 @@ static void handleCmd(const char* cmd) {
         netClearCreds(); ctrlNotify("wifi:cleared");
     } else if (!strcmp(cmd, "__WIFICONN__")) {
         netConnect(); ctrlNotify(netStatus().c_str());
-    } else if (!strncmp(cmd, "__OTAVER__:", 11)) {   // target version for the OTA screen (optional)
-        strncpy(g_otaVer, cmd + 11, sizeof(g_otaVer) - 1); g_otaVer[sizeof(g_otaVer) - 1] = 0;
     } else if (!strcmp(cmd, "__OTA__")) {
-        ctrlNotify("ota:0 starting");
-        String r = netOtaUpdate(otaProgress, POC_OTA_URL);
-        if (r == "ok") { ctrlNotify("ota:100 rebooting"); delay(500); ESP.restart(); }
-        else ctrlNotify((String("ota:err ") + r).c_str());
-    } else if (!strcmp(cmd, "__OTASWITCH__")) {
-        // Reboot-to-switch (shared approach with BBoink): flag it and reboot; the
-        // boot hook flashes the SIBLING firmware at a clean heap + boots into it.
-        ctrlNotify("ota:0 switching to " POC_OTHER_FW_NAME);
+        // Reboot-to-fetch (shared approach with BBoink): flag it and reboot; the
+        // boot hook flashes the latest of THIS firmware at a clean heap + boots it.
+        ctrlNotify("ota:0 rebooting to update — watch the board");
         delay(400);
-        pocRequestFwSwitch();           // sets the RTC flag + restarts (never returns)
+        pocRequestFwFetch(true);        // self-update; sets the RTC flag + restarts
+    } else if (!strcmp(cmd, "__OTASWITCH__")) {
+        // Same path, sibling firmware target.
+        ctrlNotify("ota:0 rebooting to switch — watch the board");
+        delay(400);
+        pocRequestFwFetch(false);       // switch to sibling; restarts (never returns)
     } else if (!strcmp(cmd, "__AUTOGET__")) {
         ctrlNotify(bleAutorun() ? "autorun:1" : "autorun:0");
     } else if (!strncmp(cmd, "__AUTORUN__:", 12)) {

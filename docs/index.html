@@ -53,8 +53,7 @@
 <div id="hdr" hidden style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:10px;padding:9px 12px;background:#161b22;border:1px solid #30363d;border-radius:10px;font-size:13px">
   <span id="hdrConn" style="font-weight:600;color:#3fb950">● connected</span>
   <span><b id="hdrver" style="color:#adbac7">—</b></span>
-  <span id="stWifi" style="margin-left:auto;color:#8b949e;font-weight:600">WIFI</span>
-  <span id="stBle"  style="color:#8b949e;font-weight:600">BLE-HID</span>
+  <span id="stBle"  style="margin-left:auto;color:#8b949e;font-weight:600">BLE-HID</span>
   <span id="stUsb"  style="color:#8b949e;font-weight:600">USB-HID</span>
   <span id="linkinfo" style="flex-basis:100%;color:#5c6772;font-size:11.5px;font-family:ui-monospace,monospace"></span>
 </div>
@@ -182,15 +181,13 @@
   </section>
 
   <section id="tab-wifi" hidden>
-    <div class="sub" style="margin:0 0 8px">WiFi is only used for over-the-air updates. It stays off until you tap Connect — it never auto-connects at boot.</div>
+    <div class="sub" style="margin:0 0 8px">WiFi only needs to be <b>configured</b> — the board brings it up itself at an update/switch reboot, then turns it back off. It never connects live here (WiFi + BLE at once churns the radio).</div>
     <div id="wifiStat" class="keys" style="margin-bottom:10px">wifi: —</div>
     <input id="ssid" placeholder="WiFi SSID" autocomplete="off" style="margin-bottom:8px">
     <input id="wpass" type="password" placeholder="WiFi password" autocomplete="off" style="margin-bottom:8px">
     <div class="row">
-      <button id="wifiSave" class="sec" style="flex:1">Save</button>
-      <button id="wifiConn" style="flex:1">Connect</button>
+      <button id="wifiSave" style="flex:1">Save</button>
       <button id="wifiClear" class="warn">Forget</button>
-      <button id="wifiRefresh" class="sec">↻</button>
     </div>
   </section>
 
@@ -445,7 +442,6 @@ function renderStatus(v){
   let m;
   if ((m = /ble=(\d)/.exec(v)))  set('stBle',  m[1] === '1');
   if ((m = /usb=(\d)/.exec(v)))  set('stUsb',  m[1] === '1');
-  if ((m = /wifi=(\d)/.exec(v))) set('stWifi', m[1] === '1');
   const li = $('linkinfo');
   if (li) {
     const mp = /proto=(-?\d)/.exec(v), mr = /rssi=(-?\d+)/.exec(v), parts = [];
@@ -640,36 +636,27 @@ $('armboot').onchange  = () => {
 $('firedelay').onchange = () => { if (rxCh) sendCmd('__FDSET__:' + ($('firedelay').value || '0')); };
 $('splash').onchange = () => { if (rxCh) sendCmd('__SPSET__:' + ($('splash').checked ? '1' : '0')); };
 $('typedelay').onchange = () => { if (rxCh) sendCmd('__TDSET__:' + ($('typedelay').value || '5')); };
-$('wifiRefresh').onclick = () => sendCmd('__WIFIST__');
 $('wifiSave').onclick = async () => {
   const s = $('ssid').value.trim(); if (!s || !rxCh) return;
   await sendCmd('__WIFI__:' + s + '|' + $('wpass').value);
-  $('wifiStat').textContent = 'wifi: saved (not connected) — tap Connect';
-  setTimeout(() => sendCmd('__WIFIST__'), 500);
-};
-$('wifiConn').onclick = async () => {
-  if (!rxCh) return;
-  await sendCmd('__WIFICONN__');
-  $('wifiStat').textContent = 'wifi: connecting…';
-  setTimeout(() => sendCmd('__WIFIST__'), 1500);
-  setTimeout(() => sendCmd('__WIFIST__'), 5000);
+  $('wifiStat').textContent = 'wifi: saved — used at the next update/switch';
 };
 $('wifiClear').onclick = async () => {
   if (!rxCh || !confirm('Forget saved WiFi on the board?')) return;
   await sendCmd('__WIFICLR__'); setTimeout(() => sendCmd('__WIFIST__'), 500);
 };
 $('otaRun').onclick = async () => {
-  if (!rxCh || busy || !confirm('Download the latest firmware and reboot into it? Keep the board powered.')) return;
-  busy = true; $('otaRun').disabled = true; $('otaStat').textContent = 'starting…';
-  try {
-    if (latestVer) { await sendCmd('__OTAVER__:' + latestVer); await new Promise(r => setTimeout(r, 250)); }  // old fw ignores this
-    await sendCmd('__OTA__');   // plain form — every firmware version understands it
-  } catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaRun').disabled = false; }
+  if (!rxCh || busy || !confirm('Reboot and update to the latest firmware over WiFi, then boot into it? The board will disconnect — watch its screen for progress. Keep it powered.')) return;
+  busy = true; $('otaRun').disabled = true; $('otaStat').textContent = 'rebooting to update — watch the board screen…';
+  // Reboot-to-fetch: the board disconnects. Auto-reload so the next connect gets a
+  // FRESH GATT (Chrome caches a stale handle across the reboot -> writes no-op).
+  try { await sendCmd('__OTA__'); setTimeout(() => location.reload(), 2500); }
+  catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaRun').disabled = false; }
 };
 if ($('otaSwitch')) $('otaSwitch').onclick = async () => {
   if (!rxCh || busy || !confirm('Reboot and flash BBoink into the spare slot, then boot into it? Needs saved WiFi. The board will disconnect — watch its screen for progress. Keep it powered.')) return;
   busy = true; $('otaSwitch').disabled = true; $('otaStat').textContent = 'rebooting to switch — watch the board screen…';
-  try { await sendCmd('__OTASWITCH__'); }
+  try { await sendCmd('__OTASWITCH__'); setTimeout(() => location.reload(), 2500); }   // fresh GATT after reboot
   catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaSwitch').disabled = false; }
 };
 $('list').onclick = () => sendCmd('__BONDS__');

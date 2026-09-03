@@ -16,6 +16,7 @@
 #include <Wire.h>
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
+#include "esp_mac.h"                 // distinct BLE base MAC per firmware (GATT-cache fix)
 
 #if defined(POC_BOARD_TEMBED)
 #define POC_BOARD_NAME "T-Embed CC1101"
@@ -161,19 +162,37 @@ static void selectOS(int menuIdx) {
     fireOS(menuIdx);
 }
 
-// ---- firmware switch (reboot-to-switch, shared approach with BBoink) ----------
-// The portal sets this flag + reboots; at clean heap (no BLE/USB/WiFi contention)
-// we connect WiFi, flash the SIBLING firmware into the spare OTA slot, and reboot
-// into it. Progress shows on the LCD.
-#define POC_SWITCH_MAGIC 0x5757C0DEu
-RTC_NOINIT_ATTR uint32_t bootSwitchFw;
-static void switchProgress(int pct, const char* msg) {
-    char b[48]; snprintf(b, sizeof(b), "%s\n%d%%", msg, pct);
-    dispCenter("SWITCH", b, 0xF7C948);
+// ---- reboot-to-fetch OTA (shared approach with BBoink) ------------------------
+// The portal sets this flag + reboots; at a clean heap (no BLE/USB/WiFi contention)
+// we connect WiFi and flash a firmware image into the spare OTA slot, then reboot
+// into it. Target: SELF (update to the latest of THIS firmware) or SWITCH (the
+// sibling firmware). Progress shows on the LCD. Two distinct magics guard against
+// power-on RTC garbage.
+#define POC_FETCH_SELF   0x5757C0D1u
+#define POC_FETCH_SWITCH 0x5757C0D2u
+RTC_NOINIT_ATTR uint32_t bootFwFetch;
+// Unified reboot-to-fetch screen (identical wording/structure in BBoink): header
+// "FIRMWARE", a center phase line, and the target ("-> BBoink"/"-> latest") pinned
+// at the bottom throughout.
+static char g_fwTarget[24] = "";
+static void fwScreen(const char* phase, uint32_t color) {
+    char b[64]; snprintf(b, sizeof(b), "%s\n\n%s", phase, g_fwTarget);
+    dispCenter("FIRMWARE", b, color);
 }
-void pocRequestFwSwitch() { bootSwitchFw = POC_SWITCH_MAGIC; delay(200); ESP.restart(); }
+static void switchProgress(int pct, const char* /*msg*/) {
+    char p[8]; snprintf(p, sizeof(p), "%d%%", pct); fwScreen(p, 0xF7C948);
+}
+// Called from the BLE control service: request a fetch on the next boot.
+void pocRequestFwFetch(bool self) { bootFwFetch = self ? POC_FETCH_SELF : POC_FETCH_SWITCH; delay(200); ESP.restart(); }
 
 void setup() {
+    // Distinct BLE identity per firmware (shared fix with BBoink): derive the base
+    // MAC from the chip's factory MAC with a firmware-specific tweak so BBoink and
+    // the PoC advertise DIFFERENT BLE addresses on the SAME board. Otherwise a
+    // firmware switch keeps the same address and Chrome serves a STALE GATT cache,
+    // so the portal's writes land on dead handles (connects fine, nothing happens).
+    // Must run before any WiFi/BLE init.
+    { uint8_t mac[6]; if (esp_efuse_mac_get_default(mac) == ESP_OK) { mac[5] ^= 0x70; esp_base_mac_addr_set(mac); } }
     pinMode(BTN, INPUT_PULLUP);
 #if defined(POC_BOARD_TEMBED)
     pinMode(15, OUTPUT); digitalWrite(15, HIGH);   // BOARD_PWR_EN: power the display rail
@@ -185,17 +204,24 @@ void setup() {
     Serial.begin(115200);
     dispBegin();
 
-    // Firmware switch requested by the portal: do it now, before BLE/USB/WiFi come
-    // up, so the flash runs at a clean heap with WiFi alone (safe on no-PSRAM).
-    if (bootSwitchFw == POC_SWITCH_MAGIC) {
-        bootSwitchFw = 0;
-        dispCenter("SWITCH", "\nfetching\n" POC_OTHER_FW_NAME, 0x22D3E0);
+    // Firmware fetch requested by the portal (update or switch): do it now, before
+    // BLE/USB/WiFi come up, so the flash runs at a clean heap with WiFi alone
+    // (safe on no-PSRAM). Progress on the LCD; the portal has disconnected.
+    if (bootFwFetch == POC_FETCH_SELF || bootFwFetch == POC_FETCH_SWITCH) {
+        bool self = (bootFwFetch == POC_FETCH_SELF);
+        const char* url = self ? POC_OTA_URL : POC_OTHER_FW_URL;
+        bootFwFetch = 0;
+        snprintf(g_fwTarget, sizeof(g_fwTarget), "-> %s", self ? "latest" : POC_OTHER_FW_NAME);
+        fwScreen("connecting wifi", 0x22D3E0);
         netBegin(); netConnect();
         uint32_t t0 = millis();
         while (WiFi.status() != WL_CONNECTED && millis() - t0 < 20000) delay(200);
-        String r = netOtaUpdate(switchProgress, POC_OTHER_FW_URL);
-        if (r == "ok") { dispCenter("SWITCH", "\nbooting\n" POC_OTHER_FW_NAME, 0x3FB950); delay(600); ESP.restart(); }
-        dispCenter("SWITCH FAIL", r.c_str(), 0xE5484D); delay(2500);   // fall through to normal boot
+        if (WiFi.status() != WL_CONNECTED) { fwScreen("NO WIFI", 0xE5484D); delay(2800); }   // fall through to normal boot
+        else {
+            String r = netOtaUpdate(switchProgress, url);
+            if (r == "ok") { fwScreen("booting", 0x3FB950); delay(700); ESP.restart(); }
+            char e[48]; snprintf(e, sizeof(e), "FAILED\n%s", r.c_str()); fwScreen(e, 0xE5484D); delay(3200);
+        }
     }
     bool armBoot = false;
 #ifdef POC_HAS_USB_HID
