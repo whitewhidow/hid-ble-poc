@@ -39,10 +39,10 @@ static const uint8_t REPORT_MAP[] = {
     0x95, 0x01, 0x75, 0x08, 0x81, 0x01,
     0x95, 0x06, 0x75, 0x08, 0x15, 0x00, 0x25, 0x65, 0x05, 0x07, 0x19, 0x00, 0x29, 0x65, 0x81, 0x00,
     0xC0,
-    // Consumer Control (Report ID 2) — one 16-bit usage (0x000-0x3FF) per report
+    // Consumer Control (Report ID 2) — one 16-bit usage (full 0x0000-0xFFFF range) per report
     0x05, 0x0C, 0x09, 0x01, 0xA1, 0x01,
     0x85, 0x02,
-    0x15, 0x00, 0x26, 0xFF, 0x03, 0x19, 0x00, 0x2A, 0xFF, 0x03, 0x75, 0x10, 0x95, 0x01, 0x81, 0x00,
+    0x15, 0x00, 0x27, 0xFF, 0xFF, 0x00, 0x00, 0x19, 0x00, 0x2A, 0xFF, 0xFF, 0x75, 0x10, 0x95, 0x01, 0x81, 0x00,
     0xC0
 };
 
@@ -181,7 +181,7 @@ static void bleRunLine(String line) {
     if (line.startsWith("PrintLine "))   { bleTypeLiteral(line.substring(10)); bleCombo(0, 0x28); return; }
     if (line.startsWith("Print "))       { bleTypeLiteral(line.substring(6)); return; }
     if (line.startsWith("String ") || line.startsWith("STRING ")) { bleTypeLiteral(line.substring(7)); return; }
-    if (line.startsWith("Consumer ")) { String a = line.substring(9); a.trim(); uint16_t u = ccUsage(a.c_str()); if (u) bleConsumer(u); return; }
+    if (line.startsWith("Consumer ")) { String a = line.substring(9); a.trim(); uint16_t u = ccResolve(a.c_str()); if (u) bleConsumer(u); return; }
     if (line.startsWith("PressRelease ")){ uint8_t m, u; if (keyNameToUsage(line.substring(13), m, u)) bleCombo(m, u); return; }
     if (line.startsWith("Press "))       { uint8_t m, u; if (keyNameToUsage(line.substring(6),  m, u)) blePressUsage(m, u); return; }
     if (line.startsWith("CTRLALT "))     { uint8_t m, u; if (keyNameToUsage(line.substring(8),  m, u)) bleCombo(0x01 | 0x04, u); return; }
@@ -548,10 +548,10 @@ static void handleCmd(const char* cmd) {
         if (usbHidMounted()) usbHidKey(cmd + 11);
 #endif
     } else if (!strncmp(cmd, "__BLECC__:", 10)) {
-        uint16_t u = ccUsage(cmd + 10); if (u) bleConsumer(u); else ctrlNotify("cc: unknown");
+        uint16_t u = ccResolve(cmd + 10); if (u) bleConsumer(u); else ctrlNotify("cc: unknown");
     } else if (!strncmp(cmd, "__USBCC__:", 10)) {
 #ifdef POC_HAS_USB_HID
-        uint16_t u = ccUsage(cmd + 10);
+        uint16_t u = ccResolve(cmd + 10);
         if (!u) ctrlNotify("cc: unknown"); else if (usbHidMounted()) usbConsumer(u); else ctrlNotify("usb: no host");
 #else
         ctrlNotify("usb: no usb-hid on this board");

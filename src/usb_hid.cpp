@@ -205,7 +205,7 @@ static void usbRunPayloadContent(const String& content) {
         if (line == "ENTER") Keyboard.write((uint8_t)'\n');
         else if (line.startsWith("DELAY ") || line.startsWith("Delay ")) delay(line.substring(6).toInt());
         else if (line.startsWith("STRING ")) usbHidType(subMac(line.substring(7)).c_str());
-        else if (line.startsWith("Consumer ")) { String a = line.substring(9); a.trim(); uint16_t u = ccUsage(a.c_str()); if (u) usbConsumer(u); }
+        else if (line.startsWith("Consumer ")) { String a = line.substring(9); a.trim(); uint16_t u = ccResolve(a.c_str()); if (u) usbConsumer(u); }
         else if (line == "GUI") tapGui("");
         else if (line.startsWith("GUI ")) { String a = line.substring(4); a.trim(); tapGui(a); }
         else if (line.startsWith("CTRLALT ")) usbCombo(KEY_LEFT_CTRL, KEY_LEFT_ALT, 0, line.charAt(8));
