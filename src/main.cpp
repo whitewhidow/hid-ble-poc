@@ -196,13 +196,18 @@ void loop() {
     bleHidTick();
 
     bool b = digitalRead(BTN);
-    if (b == LOW && lastBtn == HIGH) { pressStart = millis(); firedLong = false; }
-    if (b == LOW && !firedLong && millis() - pressStart > 800) { firedLong = true; Serial.printf("[btn] hold-select sel=%d\n", sel); selectOS(sel); }  // HOLD = select
-    if (b == HIGH && lastBtn == LOW) {                                                                // release
-        uint32_t held = millis() - pressStart;
-        if (!firedLong && held > 40 && held < 700) {                                                  // CLICK
-            if (menuAt) { menuAt = 0; drawMenu(); }                    // post-send: click = back to menu
-            else { sel = (sel + 1) % NITEMS; drawMenu(); }            // in menu: click = next item
+    static bool btnReady = false;   // ignore a button held from boot (GPIO0 = BOOT, held during flashing)
+    if (!btnReady) {
+        if (b == HIGH) btnReady = true;                                                               // wait for first release
+    } else {
+        if (b == LOW && lastBtn == HIGH) { pressStart = millis(); firedLong = false; }
+        if (b == LOW && !firedLong && millis() - pressStart > 800) { firedLong = true; Serial.printf("[btn] hold-select sel=%d\n", sel); selectOS(sel); }  // HOLD = select
+        if (b == HIGH && lastBtn == LOW) {                                                            // release
+            uint32_t held = millis() - pressStart;
+            if (!firedLong && held > 40 && held < 700) {                                              // CLICK
+                if (menuAt) { menuAt = 0; drawMenu(); }                // post-send: click = back to menu
+                else { sel = (sel + 1) % NITEMS; drawMenu(); }        // in menu: click = next item
+            }
         }
     }
     lastBtn = b;

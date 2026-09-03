@@ -396,6 +396,7 @@ $('connect').onclick = async () => {
     setTimeout(() => sendCmd('__STATUS__'), 300);           // WIFI / BLE-HID / USB-HID transport status
     checkLatest();                                          // fetch latest release (phone net) to colour the version
     setTimeout(refreshSettings, 500);                       // then settings incl. fw (spaced; avoids clobbering the trio)
+    setTimeout(refreshSettings, 3500);                      // re-query: a board auto-firing at boot drops the first pass
     refreshTimer = setInterval(() => { if (!busy) sendCmd('__BONDS__'); }, 3000);   // auto-refresh (paused during file ops)
   } catch (e) { $('stat').textContent = '✖ ' + e.message; }
 };
