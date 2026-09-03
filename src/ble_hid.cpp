@@ -150,7 +150,7 @@ static bool keyNameToUsage(String n, uint8_t& mod, uint8_t& usage) {
 
 static void bleRunLine(String line) {
     line.trim();
-    if (line.length() == 0 || line.startsWith("##") || line.startsWith("REM")) return;
+    if (line.length() == 0 || line[0] == '#' || line.startsWith("REM")) return;   // '#'/'##' comment or blank
     // one-shot modifier combos
     if (line == "Release")   { bleReleaseAll(); return; }
     if (line == "Gui")       { bleCombo(0x08, 0); return; }

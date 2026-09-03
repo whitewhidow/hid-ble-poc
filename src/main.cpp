@@ -160,11 +160,15 @@ void setup() {
 #endif
     Serial.begin(115200);
     dispBegin();
-    dispSplash(netVersion(), POC_BOARD_NAME);                   // graphical boot splash
+    bool armBoot = false;
+#ifdef POC_HAS_USB_HID
+    armBoot = bleArmBoot();             // arming headless -> skip the splash, fire ASAP
+#endif
+    if (!armBoot) dispSplash(netVersion(), POC_BOARD_NAME);     // graphical boot splash
     usbHidBegin();
     bleHidBegin();
     netBegin();                         // reconnect WiFi if creds were saved (for OTA)
-    delay(1200);                        // keep the splash up briefly
+    if (!armBoot) delay(1200);          // only linger on the splash if we showed it
 #ifdef POC_HAS_USB_HID
     if (bleArmBoot()) {                 // headless: auto-arm the configured OS, wait for a plug
         armedIdx = bleTargetOs(); sel = armedIdx; armed = true; wasMounted = false;
