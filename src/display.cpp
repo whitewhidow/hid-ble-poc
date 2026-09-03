@@ -172,6 +172,38 @@ void dispCmd(const char* header, const char* cmd) {
     lcd.setTextSize(1); lcd.setCursor(UI_PAD, UI_BODY_Y); lcd.print(cmd);
 }
 
+// Boot splash — a graphical intro (scales to the panel): a little decorative key
+// row, the title with a drop shadow, a subtitle, an accent underline, and the
+// version/board footer. Replaces the old plain-text splash.
+void dispSplash(const char* version, const char* board) {
+    const int W = lcd.width(), H = lcd.height();
+    const bool big = W >= 240;
+    uint32_t cyan = lcd.color888(0x22, 0xD3, 0xE0), mag = lcd.color888(0xE8, 0x79, 0xF9);
+    uint32_t dim  = lcd.color888(0x5a, 0x67, 0x72), dark = lcd.color888(0x0b, 0x2a, 0x2e);
+    lcd.fillScreen(0x000000u);
+    for (int y = 0; y < H; y += 4) lcd.drawFastHLine(0, y, W, lcd.color888(0x0a, 0x12, 0x16)); // faint scanlines
+    // decorative keyboard band (a row of little keys), one cyan accent key
+    int kw = big ? 18 : 10, kh = big ? 14 : 8, gap = big ? 5 : 3;
+    int kn = (W - 16) / (kw + gap); if (kn > 12) kn = 12; if (kn < 1) kn = 1;
+    int startx = (W - (kn * (kw + gap) - gap)) / 2, ky = (int)(H * 0.16);
+    for (int i = 0; i < kn; i++)
+        lcd.fillRoundRect(startx + i * (kw + gap), ky, kw, kh, 2, (i % 5 == 2) ? cyan : dark);
+    // title with drop shadow
+    lcd.setTextDatum(middle_center);
+    lcd.setTextSize(big ? 5 : 3);
+    lcd.setTextColor(dark); lcd.drawString("PoC-KBD", W / 2 + 2, H / 2 + 2);
+    lcd.setTextColor(cyan); lcd.drawString("PoC-KBD", W / 2, H / 2);
+    // subtitle + accent underline
+    lcd.setTextSize(big ? 2 : 1);
+    lcd.setTextColor(mag); lcd.drawString("USB >> BLE HID", W / 2, H / 2 + (big ? 30 : 18));
+    int uw = (int)(W * 0.5); lcd.fillRect((W - uw) / 2, H / 2 + (big ? 46 : 28), uw, 2, cyan);
+    // footer: version + board
+    lcd.setTextSize(1); lcd.setTextColor(dim);
+    char f[48]; snprintf(f, sizeof(f), "v%s  -  %s", version, board);
+    lcd.setTextDatum(bottom_center); lcd.drawString(f, W / 2, H - 4);
+    lcd.setTextDatum(top_left);
+}
+
 // Persistent bottom status bar: PC / PHONE / USB-host as green (up) or red (down),
 // plus the total connection count.
 void dispBle(bool pc, bool phone, bool usb, bool autorun, bool armboot, int targetOs, int batt, int total) {

@@ -527,23 +527,31 @@ static void handleCmd(const char* cmd) {
         }
 #endif
     } else if (!strncmp(cmd, "__RUNUSB__:", 11)) {
-        // Fire a stored OS payload out of the board's USB-HID into the plugged-in PC.
-        const char* os = cmd + 11;
+        // Fire a slot payload (or autodetect) out of the board's USB-HID into the PC.
+        const char* slot = cmd + 11;
 #ifdef POC_HAS_USB_HID
-        int o = -1;
-        if      (!strcmp(os, "windows")) o = POC_OS_WINDOWS;
-        else if (!strcmp(os, "linux"))   o = POC_OS_LINUX;
-        else if (!strcmp(os, "macos"))   o = POC_OS_MACOS;
-        if (o < 0) ctrlNotify("usb: bad os");
-        else if (!usbHidMounted()) { char b[52]; snprintf(b, sizeof(b), "usb: no host (plug in to fire %s)", os); ctrlNotify(b); }
-        else {
-            char b[40]; snprintf(b, sizeof(b), "usb: firing %s payload", os); ctrlNotify(b);
-            usbSamplePayload(o);
+        if (!usbHidMounted()) ctrlNotify("usb: no host (plug in)");
+        else if (!strcmp(slot, "auto")) {
+            ctrlNotify("usb: autodetect...");
+            int o = usbDetectOS(); usbSamplePayload(o); ctrlNotify("usb: sent");
+        } else if (!strcmp(slot, "linux") || !strcmp(slot, "windows") || !strcmp(slot, "macos") || !strcmp(slot, "custom")) {
+            char b[40]; snprintf(b, sizeof(b), "usb: firing %s", slot); ctrlNotify(b);
+            if (!strcmp(slot, "custom")) { String c; if (pocFsRead("custom", c)) usbRunScript(c.c_str()); }
+            else usbSamplePayload(!strcmp(slot, "windows") ? POC_OS_WINDOWS : !strcmp(slot, "macos") ? POC_OS_MACOS : POC_OS_LINUX);
             ctrlNotify("usb: sent");
-        }
+        } else ctrlNotify("usb: bad slot");
 #else
         ctrlNotify("usb: no usb-hid on this board");
 #endif
+    } else if (!strncmp(cmd, "__RUNBLE__:", 11)) {
+        // Fire a slot payload over BLE-HID into the paired PC (autodetect is USB-only).
+        const char* slot = cmd + 11;
+        if (strcmp(slot, "linux") && strcmp(slot, "windows") && strcmp(slot, "macos") && strcmp(slot, "custom")) ctrlNotify("ble: bad slot");
+        else {
+            String c;
+            if (pocFsRead(slot, c)) { char b[40]; snprintf(b, sizeof(b), "ble: firing %s", slot); ctrlNotify(b); bleHidRun(c.c_str()); }
+            else ctrlNotify("ble: empty slot");
+        }
     } else if (!strcmp(cmd, "__PLLIST__")) {
         String l = pocLibList(); l.replace("\n", ",");
         if (l.endsWith(",")) l.remove(l.length() - 1);

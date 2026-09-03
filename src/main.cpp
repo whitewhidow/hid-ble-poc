@@ -160,8 +160,7 @@ void setup() {
 #endif
     Serial.begin(115200);
     dispBegin();
-    { char sp[80]; snprintf(sp, sizeof(sp), "v%s  %s\nclick=next  hold=go", netVersion(), POC_BOARD_NAME);
-      dispShow("PoC-KBD", sp, 0x22D3E0); }                       // boot splash: version + controls
+    dispSplash(netVersion(), POC_BOARD_NAME);                   // graphical boot splash
     usbHidBegin();
     bleHidBegin();
     netBegin();                         // reconnect WiFi if creds were saved (for OTA)

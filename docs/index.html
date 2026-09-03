@@ -42,8 +42,7 @@
 </style>
 </head>
 <body>
-<h1>🐷 PoC-KBD control</h1>
-<div class="sub">Connect over Bluetooth, send text (typed into the paired PC over BLE-HID), and manage the board's paired devices. Chrome/Edge, https or localhost.</div>
+<h1 style="text-align:center;margin-bottom:14px">🐷 PoC-KBD control</h1>
 
 <button id="connect" style="width:100%">Connect to PoC-KBD</button>
 <div id="stat"></div>
@@ -98,12 +97,22 @@
     <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 8px">OS slots — which payload the board fires</div>
     <div id="slotrows"></div>
 
-    <div class="sub" style="margin:14px 0 4px">⚡ Fire the slot's payload out of the board's <b>USB</b> into the plugged-in PC:</div>
-    <div class="row" id="usbrow">
-      <button class="sec usbfire" data-os="linux" style="flex:1">Linux</button>
-      <button class="sec usbfire" data-os="windows" style="flex:1">Windows</button>
-      <button class="sec usbfire" data-os="macos" style="flex:1">Macos</button>
+    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 8px">Fire a slot payload</div>
+    <div class="row" style="align-items:center;gap:10px">
+      <span class="sub" style="flex:0 0 auto;margin:0">Send over</span>
+      <select id="firetarget" style="flex:1;padding:9px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:15px">
+        <option value="usb">USB PC</option>
+        <option value="ble">BLE-HID PC</option>
+      </select>
     </div>
+    <div class="row" id="firerow" style="flex-wrap:wrap;gap:6px">
+      <button class="sec fire" data-slot="linux" style="flex:1 1 30%">Linux</button>
+      <button class="sec fire" data-slot="windows" style="flex:1 1 30%">Windows</button>
+      <button class="sec fire" data-slot="macos" style="flex:1 1 30%">Macos</button>
+      <button class="sec fire" data-slot="custom" style="flex:1 1 30%">Custom</button>
+      <button class="sec fire" data-slot="auto" style="flex:1 1 100%">⚡ Autodetect + Run (USB)</button>
+    </div>
+    <div class="sub" style="margin:6px 0 0">Fires the chosen slot's payload into the PC over the selected transport. Autodetect fingerprints the OS over USB, so it's USB-only.</div>
   </section>
 
   <section id="tab-devices" hidden>
@@ -421,7 +430,18 @@ function buildOSK(){
 buildOSK();
 
 // ---- fire a payload over USB into the plugged-in PC ----------------------
-for (const b of document.querySelectorAll('.usbfire')) b.onclick = () => { if (rxCh) { sendCmd('__RUNUSB__:' + b.dataset.os); log('usb: fire ' + b.dataset.os + ' →'); } };
+// ---- fire a slot payload over the selected transport (BLE or USB) --------
+function fireTarget(){ return $('firetarget') && $('firetarget').value === 'ble' ? 'ble' : 'usb'; }
+function updateFireBtns(){ const ble = fireTarget() === 'ble'; for (const b of document.querySelectorAll('.fire')) if (b.dataset.slot === 'auto') b.disabled = ble; }
+if ($('firetarget')) $('firetarget').onchange = updateFireBtns;
+for (const b of document.querySelectorAll('.fire')) b.onclick = () => {
+  if (!rxCh) return;
+  const slot = b.dataset.slot, t = fireTarget();
+  if (slot === 'auto' && t === 'ble') return;               // autodetect needs USB
+  sendCmd((t === 'usb' ? '__RUNUSB__:' : '__RUNBLE__:') + slot);
+  log(t + ': fire ' + slot + ' →');
+};
+updateFireBtns();
 
 let latestVer = '';
 async function checkLatest(){
@@ -494,8 +514,8 @@ let libNames = [];            // library payload names
 let curLib = null;            // name loaded in the editor
 let slotMap = { linux:'', windows:'', macos:'' };
 let libBuf = '';              // accumulates pldat: chunks
-const OSES = ['linux','windows','macos'];
-const OSLBL = { linux:'Linux', windows:'Windows', macos:'Macos' };
+const OSES = ['linux','windows','macos','custom'];
+const OSLBL = { linux:'Linux', windows:'Windows', macos:'Macos', custom:'Custom' };
 
 function refreshLib(){ if (!rxCh) return; sendCmd('__PLLIST__'); setTimeout(() => sendCmd('__PLSLOTS__'), 200); }
 

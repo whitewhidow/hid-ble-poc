@@ -245,7 +245,7 @@ void usbSamplePayload(int os) {
 // Only the three OS payloads are addressable; reject anything else so a bad/rogue
 // name can't reach arbitrary paths.
 static bool fsPath(const char* os, char* out, size_t n) {
-    if (!strcmp(os, "linux") || !strcmp(os, "windows") || !strcmp(os, "macos")) {
+    if (!strcmp(os, "linux") || !strcmp(os, "windows") || !strcmp(os, "macos") || !strcmp(os, "custom")) {
         snprintf(out, n, "/%s.txt", os); return true;
     }
     return false;
@@ -335,8 +335,8 @@ bool pocLibLoadToSlot(const char* name, const char* os) {
 }
 String pocSlotAssignments() {
     Preferences pr; pr.begin("poc", true);
-    String r; const char* oses[] = { "linux", "windows", "macos" };
-    for (int i = 0; i < 3; i++) {
+    String r; const char* oses[] = { "linux", "windows", "macos", "custom" };
+    for (int i = 0; i < 4; i++) {
         char key[16]; snprintf(key, sizeof(key), "sl_%s", oses[i]);
         if (i) r += ";";
         r += String(oses[i]) + "=" + pr.getString(key, "");
@@ -348,7 +348,7 @@ String pocSlotAssignments() {
 // each slot's assignment to its namesake, so the manager starts populated.
 static void libSeedFromSlots() {
     if (pocLibList().length() > 0) return;
-    const char* oses[] = { "linux", "windows", "macos" };
+    const char* oses[] = { "linux", "windows", "macos", "custom" };
     for (auto os : oses) {
         char lp[40], sp[24];
         snprintf(lp, sizeof(lp), "/pl_%s.txt", os); snprintf(sp, sizeof(sp), "/%s.txt", os);
@@ -358,7 +358,8 @@ static void libSeedFromSlots() {
         in.close(); out.close();
     }
     Preferences pr; pr.begin("poc", false);
-    pr.putString("sl_linux", "linux"); pr.putString("sl_windows", "windows"); pr.putString("sl_macos", "macos");
+    pr.putString("sl_linux", "linux"); pr.putString("sl_windows", "windows");
+    pr.putString("sl_macos", "macos"); pr.putString("sl_custom", "custom");
     pr.end();
 }
 
@@ -384,6 +385,10 @@ void usbHidBegin() {
     if (!t) { Serial.println("[fs] write-test FAIL -> format"); LittleFS.format(); LittleFS.begin(true, "/littlefs", 10, "littlefs"); }
     else    { t.close(); LittleFS.remove("/.wtest"); }
     seedPayload(POC_OS_LINUX); seedPayload(POC_OS_WINDOWS); seedPayload(POC_OS_MACOS);
+    { // seed the free-form 'custom' slot if missing/empty
+        File r = LittleFS.open("/custom.txt", "r"); size_t sz = r ? r.size() : 0; if (r) r.close();
+        if (sz == 0) { File f = LittleFS.open("/custom.txt", "w"); if (f) { f.print("# custom payload\nPrintLine hello from the custom slot\n"); f.close(); } }
+    }
     libSeedFromSlots();
     USB.onEvent(usbEventCallback);
     Keyboard.onEvent(usbEventCallback);
