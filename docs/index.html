@@ -32,15 +32,26 @@
   .dev button { padding:6px 10px; font-size:13px; }
   #stat { font-size:13px; color:#8b949e; margin-top:10px; }
   #log { margin-top:12px; background:#161b22; border:1px solid #30363d; border-radius:8px; padding:10px; font:12px/1.5 ui-monospace,monospace; white-space:pre-wrap; min-height:44px; max-height:30vh; overflow:auto; }
+  #osk { display:flex; flex-direction:column; gap:5px; user-select:none; -webkit-user-select:none; }
+  #osk .kbrow { display:flex; gap:4px; }
+  #osk .k { flex:1 1 0; min-width:0; padding:12px 0; border-radius:6px; border:1px solid #30363d; background:#161b22; color:#e6edf3; font:14px ui-monospace,monospace; font-weight:500; text-align:center; cursor:pointer; }
+  #osk .k:active { background:#22d3e0; color:#04181b; }
+  #osk .k.mod.on { background:#1f6feb; color:#fff; border-color:#1f6feb; }
+  #osk .k.warn { color:#f7c948; border-color:#7a5c12; }
 </style>
 </head>
 <body>
-<div id="hdrver" style="position:fixed;top:8px;right:12px;font-size:12px;color:#8b949e;z-index:10"></div>
 <h1>🐷 PoC-KBD control</h1>
 <div class="sub">Connect over Bluetooth, send text (typed into the paired PC over BLE-HID), and manage the board's paired devices. Chrome/Edge, https or localhost.</div>
 
 <button id="connect" style="width:100%">Connect to PoC-KBD</button>
 <div id="stat"></div>
+<div id="hdr" hidden style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:10px;padding:9px 12px;background:#161b22;border:1px solid #30363d;border-radius:10px;font-size:13px">
+  <span id="hdrConn" style="font-weight:600;color:#3fb950">● connected</span>
+  <span style="color:#8b949e">fw <b id="hdrver" style="color:#adbac7">—</b></span>
+  <span style="margin-left:auto;color:#8b949e">BLE-HID <b id="stBle" style="color:#8b949e">○</b></span>
+  <span style="color:#8b949e">USB <b id="stUsb" style="color:#8b949e">○</b></span>
+</div>
 
 <div id="app" hidden>
   <div class="tabs">
@@ -54,10 +65,6 @@
     <button class="tab" data-tab="help">Commands</button>
   </div>
 
-  <div id="statusbar" style="display:flex;gap:16px;margin:2px 0 12px;font-family:ui-monospace,monospace;font-size:12.5px;color:#8a97a2">
-    <span>BLE-HID (PC) <b id="stBle" style="color:#8b949e">○</b></span>
-    <span>USB (PC) <b id="stUsb" style="color:#8b949e">○</b></span>
-  </div>
 
   <section id="tab-type">
     <textarea id="text" rows="5" placeholder="text to type on the PC">hello from my phone</textarea>
@@ -66,21 +73,15 @@
   </section>
 
   <section id="tab-keyboard" hidden>
-    <div class="sub" style="margin:0 0 8px">Live keyboard over BLE-HID — whatever you type in the box goes to the paired PC as you type. Use the keys below for Enter / Tab / navigation. Needs a PC subscribed to the BLE keyboard (see BLE-HID status above).</div>
-    <textarea id="kbcap" rows="3" placeholder="tap here and type — keystrokes go to the PC live" style="font:14px/1.5 ui-monospace,monospace"></textarea>
-    <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
-      <button class="sec kbk" data-k="enter">⏎ Enter</button>
-      <button class="sec kbk" data-k="tab">⇥ Tab</button>
-      <button class="sec kbk" data-k="bksp">⌫ Bksp</button>
-      <button class="sec kbk" data-k="esc">Esc</button>
-      <button class="sec kbk" data-k="del">Del</button>
-      <button class="sec kbk" data-k="up">↑</button>
-      <button class="sec kbk" data-k="down">↓</button>
-      <button class="sec kbk" data-k="left">←</button>
-      <button class="sec kbk" data-k="right">→</button>
-      <button class="sec kbk" data-k="gui">⊞ Win</button>
-      <button class="warn kbk" data-k="cad">Ctrl+Alt+Del</button>
+    <div class="row" style="align-items:center;gap:10px;margin:0 0 8px">
+      <span class="sub" style="flex:1;margin:0">On-screen keyboard — keys go to the</span>
+      <select id="kbtarget" style="flex:0 0 auto;padding:8px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:14px">
+        <option value="ble">BLE-HID PC</option>
+        <option value="usb">USB PC</option>
+      </select>
     </div>
+    <div id="osk"></div>
+    <div class="sub" style="margin:8px 0 0">Shift latches; Ctrl / Alt / ⊞ apply to the next letter (e.g. Ctrl then C = Ctrl+C, ⊞ then R = Win+R). BLE needs the <b>BLE-HID</b> dot ●; USB needs the board plugged into that PC (<b>USB</b> dot ●).</div>
   </section>
 
   <section id="tab-payloads" hidden>
@@ -137,17 +138,17 @@
   </section>
 
   <section id="tab-options" hidden>
-    <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:6px 0 0">
-      <input type="checkbox" id="autorun" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0">
-      <span style="flex:1">Autorun — selecting an OS arms it (auto-fires on plug) instead of firing now</span>
-    </label>
-    <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0">
-      <input type="checkbox" id="armboot" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0">
-      <span style="flex:1">Arm at boot — start armed with the target OS, no menu (headless; for the dongle)</span>
-    </label>
+    <div class="row" style="align-items:center;gap:10px;margin:6px 0 0">
+      <span style="flex:1">On selecting an OS in the menu</span>
+      <select id="autorun" style="flex:0 0 auto;padding:8px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:15px">
+        <option value="0">Run now</option>
+        <option value="1">Arm (fire on plug)</option>
+      </select>
+    </div>
     <div class="row" style="align-items:center;gap:10px;margin:8px 0 0">
-      <span style="flex:1">Target OS (for arm-at-boot)</span>
-      <select id="targetos" style="flex:0 0 auto;padding:8px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:15px">
+      <span style="flex:1">Arm at boot — start armed, no menu (headless; for the dongle)</span>
+      <select id="armboot" style="flex:0 0 auto;padding:8px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:15px">
+        <option value="off">Manual arm</option>
         <option value="0">Autodetect</option>
         <option value="1">Linux</option>
         <option value="2">Windows</option>
@@ -288,7 +289,7 @@ $('connect').onclick = async () => {
     $('stat').textContent = 'requesting device…';
     const dev = await navigator.bluetooth.requestDevice({ filters:[{ name:'PoC-KBD' }], optionalServices:[SVC] });
     dev.addEventListener('gattserverdisconnected', () => {
-      $('stat').textContent = '⚠ disconnected'; $('app').hidden = true; $('connect').hidden = false;
+      $('stat').textContent = '⚠ disconnected'; $('app').hidden = true; $('hdr').hidden = true; $('connect').hidden = false;
       if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
     });
     const g = await dev.gatt.connect();
@@ -309,9 +310,9 @@ $('connect').onclick = async () => {
       if (waiter && waiter.match(v)) { waiter.resolve(v); return; }
       if (v.startsWith('wifi:')) { renderWifi(v); return; }
       if (v.startsWith('ota:'))  { renderOta(v);  return; }
-      if (v.startsWith('autorun:')) { $('autorun').checked = (v.slice(8) === '1'); return; }
-      if (v.startsWith('armboot:')) { $('armboot').checked = (v.slice(8) === '1'); return; }
-      if (v.startsWith('os:'))      { $('targetos').value = v.slice(3); return; }
+      if (v.startsWith('autorun:')) { $('autorun').value = v.slice(8); return; }
+      if (v.startsWith('armboot:')) { armOn = (v.slice(8) === '1'); updateArmSel(); return; }
+      if (v.startsWith('os:'))      { armOs = v.slice(3); updateArmSel(); return; }
       if (v.startsWith('firedelay:')) { $('firedelay').value = v.slice(10); return; }
       if (v.startsWith('typedelay:')) { $('typedelay').value = v.slice(10); return; }
       if (v.startsWith('ver:'))       { const vv = 'v' + v.slice(4); $('fwver').textContent = vv; $('hdrver').textContent = vv; return; }
@@ -319,7 +320,8 @@ $('connect').onclick = async () => {
       if (v.startsWith('st:'))        { renderStatus(v); return; }
       if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
     });
-    $('stat').textContent = '✔ connected to ' + (dev.name || 'PoC-KBD');
+    $('stat').textContent = '';
+    $('hdr').hidden = false; $('hdrConn').textContent = '● ' + (dev.name || 'PoC-KBD');
     $('connect').hidden = true; $('app').hidden = false;
     sendCmd('__BONDS__');                                   // list now
     setTimeout(() => sendCmd('__MAC__'), 120);              // board BLE MAC
@@ -351,27 +353,63 @@ function renderStatus(v){
   set('stBle', m[1] === '1'); set('stUsb', m[2] === '1');
 }
 
-// ---- live BLE-HID keyboard ----------------------------------------------
-// Printable input goes via 'input' events (works with mobile soft keyboards
-// too); Tab/Esc/arrows never fire 'input', so grab those on keydown.
-const kb = $('kbcap');
-if (kb) {
-  kb.addEventListener('input', e => {
-    if (!rxCh) return;
-    const it = e.inputType;
-    if (it === 'insertText' && e.data != null) sendCmd('__BLETYPE__:' + e.data);
-    else if (it === 'insertLineBreak' || it === 'insertParagraph') sendCmd('__BLEKEY__:enter');
-    else if (it === 'deleteContentBackward') sendCmd('__BLEKEY__:bksp');
-    else if (it === 'deleteContentForward')  sendCmd('__BLEKEY__:del');
-    else if (it === 'insertFromPaste' && e.data) sendCmd('__BLETYPE__:' + e.data);
-  });
-  const KD = { Tab:'tab', Escape:'esc', ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left',
-               ArrowRight:'right', Home:'home', End:'end', PageUp:'pgup', PageDown:'pgdn', Delete:'del' };
-  kb.addEventListener('keydown', e => {
-    if (KD[e.key]) { e.preventDefault(); if (rxCh) sendCmd('__BLEKEY__:' + KD[e.key]); }
-  });
+// ---- arm-at-boot dropdown ("Manual arm" + a target OS) -------------------
+let armOn = false, armOs = '0';
+function updateArmSel(){ const s = $('armboot'); if (s) s.value = armOn ? armOs : 'off'; }
+
+// ---- on-screen keyboard --------------------------------------------------
+// Each row entry is a char key [base, shifted], a special {sp}, or a sticky/
+// armed modifier {mod}. Keys route to BLE-HID or USB per the target dropdown.
+const OSK_ROWS = [
+  [['`','~'],['1','!'],['2','@'],['3','#'],['4','$'],['5','%'],['6','^'],['7','&'],['8','*'],['9','('],['0',')'],['-','_'],['=','+'],{sp:'bksp',lbl:'⌫',w:1.6}],
+  [{sp:'tab',lbl:'⇥',w:1.4},['q','Q'],['w','W'],['e','E'],['r','R'],['t','T'],['y','Y'],['u','U'],['i','I'],['o','O'],['p','P'],['[','{'],[']','}'],['\\','|']],
+  [['a','A'],['s','S'],['d','D'],['f','F'],['g','G'],['h','H'],['j','J'],['k','K'],['l','L'],[';',':'],['\'','"'],{sp:'enter',lbl:'⏎',w:1.8}],
+  [{mod:'shift',lbl:'⇧',w:1.8},['z','Z'],['x','X'],['c','C'],['v','V'],['b','B'],['n','N'],['m','M'],[',','<'],['.','>'],['/','?'],{sp:'up',lbl:'↑'}],
+  [{mod:'c',lbl:'Ctrl'},{mod:'g',lbl:'⊞'},{mod:'a',lbl:'Alt'},{sp:'esc',lbl:'Esc'},{sp:'space',lbl:'␣',w:4},{sp:'del',lbl:'Del'},{sp:'cad',lbl:'C-A-D',w:1.4},{sp:'left',lbl:'←'},{sp:'down',lbl:'↓'},{sp:'right',lbl:'→'}],
+];
+let shiftOn = false, modC = false, modA = false, modG = false;
+let charKeys = [];
+function kbT(){ return $('kbtarget') && $('kbtarget').value === 'usb' ? 'usb' : 'ble'; }
+function kbType(ch){ sendCmd((kbT()==='usb'?'__USBTYPE__:':'__BLETYPE__:') + ch); }
+function kbKey(name){ sendCmd((kbT()==='usb'?'__USBKEY__:':'__BLEKEY__:') + name); }
+function kbChord(mods, ch){ sendCmd((kbT()==='usb'?'__USBCHORD__:':'__BLECHORD__:') + mods + ':' + ch); }
+function clearMods(){ modC = modA = modG = false; updateModVis(); }
+function updateModVis(){
+  for (const b of document.querySelectorAll('#osk .mod')) {
+    const m = b.dataset.mod, on = m==='shift'?shiftOn : m==='c'?modC : m==='a'?modA : modG;
+    b.classList.toggle('on', !!on);
+  }
 }
-for (const b of document.querySelectorAll('.kbk')) b.onclick = () => { if (rxCh) sendCmd('__BLEKEY__:' + b.dataset.k); if (kb) kb.focus(); };
+function relabel(){ for (const b of charKeys) b.textContent = shiftOn ? b._p[1] : b._p[0]; }
+function pressChar(pair){
+  if (!rxCh) return;
+  const ch = shiftOn ? pair[1] : pair[0];
+  const m = (modC?'c':'') + (modA?'a':'') + (modG?'g':'');
+  if (m) { kbChord(m, ch); clearMods(); } else kbType(ch);
+}
+function pressSpecial(name){ if (!rxCh) return; clearMods(); kbKey(name); }   // mods don't chord with nav keys (C-A-D is its own key)
+function toggleMod(m){
+  if (m==='shift') { shiftOn = !shiftOn; relabel(); }
+  else if (m==='c') modC = !modC; else if (m==='a') modA = !modA; else modG = !modG;
+  updateModVis();
+}
+function buildOSK(){
+  const box = $('osk'); if (!box) return; box.innerHTML = ''; charKeys = [];
+  for (const row of OSK_ROWS) {
+    const r = document.createElement('div'); r.className = 'kbrow';
+    for (const key of row) {
+      const b = document.createElement('button'); b.className = 'k'; b.type = 'button';
+      if (key.w) b.style.flexGrow = key.w;
+      if (Array.isArray(key)) { b._p = key; b.textContent = key[0]; b.onclick = () => pressChar(key); charKeys.push(b); }
+      else if (key.sp) { b.textContent = key.lbl; if (key.sp==='cad') b.classList.add('warn'); b.onclick = () => pressSpecial(key.sp); }
+      else { b.textContent = key.lbl; b.classList.add('mod'); b.dataset.mod = key.mod; b.onclick = () => toggleMod(key.mod); }
+      r.appendChild(b);
+    }
+    box.appendChild(r);
+  }
+  updateModVis();
+}
+buildOSK();
 
 // ---- fire a payload over USB into the plugged-in PC ----------------------
 for (const b of document.querySelectorAll('.usbfire')) b.onclick = () => { if (rxCh) { sendCmd('__RUNUSB__:' + b.dataset.os); log('usb: fire ' + b.dataset.os + ' →'); } };
@@ -403,9 +441,13 @@ function renderOta(v){
   $('otaStat').textContent = rest;
   if (rest.startsWith('err')) { busy = false; $('otaRun').disabled = false; }
 }
-$('autorun').onchange  = () => { if (rxCh) sendCmd('__AUTORUN__:' + ($('autorun').checked ? '1' : '0')); };
-$('armboot').onchange  = () => { if (rxCh) sendCmd('__ARMBOOT__:' + ($('armboot').checked ? '1' : '0')); };
-$('targetos').onchange = () => { if (rxCh) sendCmd('__OSSET__:' + $('targetos').value); };
+$('autorun').onchange  = () => { if (rxCh) sendCmd('__AUTORUN__:' + $('autorun').value); };
+$('armboot').onchange  = () => {
+  if (!rxCh) return;
+  const v = $('armboot').value;
+  if (v === 'off') sendCmd('__ARMBOOT__:0');
+  else { armOs = v; sendCmd('__OSSET__:' + v); setTimeout(() => sendCmd('__ARMBOOT__:1'), 180); }
+};
 $('firedelay').onchange = () => { if (rxCh) sendCmd('__FDSET__:' + ($('firedelay').value || '0')); };
 $('typedelay').onchange = () => { if (rxCh) sendCmd('__TDSET__:' + ($('typedelay').value || '5')); };
 $('wifiRefresh').onclick = () => sendCmd('__WIFIST__');

@@ -308,7 +308,7 @@ void bleSetFireDelay(int ms) {
 
 static int32_t g_typeDelay = -1;
 int bleTypeDelay() {
-    if (g_typeDelay < 0) { Preferences p; p.begin("poc", true); g_typeDelay = p.getUShort("typedelay", 5); p.end(); }
+    if (g_typeDelay < 0) { Preferences p; p.begin("poc", true); g_typeDelay = p.getUShort("typedelay", 8); p.end(); }
     return g_typeDelay;
 }
 void bleSetTypeDelay(int ms) {
@@ -486,6 +486,40 @@ static void handleCmd(const char* cmd) {
             if (!g_hidReady || !input) ctrlNotify("no HID host paired");
             else { sendReport(mod, key); ctrlNotify("key"); }
         }
+    } else if (!strncmp(cmd, "__BLECHORD__:", 13)) {
+        // "<mods>:<char>" — modifier+key chord over BLE-HID. mods = any of c/a/g
+        // (ctrl/alt/gui); shift is folded into the char itself. e.g. "c:c"=Ctrl+C,
+        // "g:r"=Win+R. HID mod bits: LCtrl 0x01, LShift 0x02, LAlt 0x04, LGui 0x08.
+        const char* p = cmd + 13;
+        const char* colon = strchr(p, ':');
+        if (colon && colon[1]) {
+            uint8_t extra = 0;
+            for (const char* q = p; q < colon; q++) {
+                if (*q == 'c') extra |= 0x01; else if (*q == 'a') extra |= 0x04; else if (*q == 'g') extra |= 0x08;
+            }
+            uint8_t m, k;
+            if (asciiToHid(colon[1], m, k)) {
+                if (!g_hidReady || !input) ctrlNotify("no HID host paired");
+                else { sendReport(m | extra, k); ctrlNotify("key"); }
+            }
+        }
+    } else if (!strncmp(cmd, "__USBTYPE__:", 12)) {
+#ifdef POC_HAS_USB_HID
+        if (usbHidMounted()) usbHidType(cmd + 12);   // silent if no host (the USB dot shows it)
+#endif
+    } else if (!strncmp(cmd, "__USBKEY__:", 11)) {
+#ifdef POC_HAS_USB_HID
+        if (usbHidMounted()) usbHidKey(cmd + 11);
+#endif
+    } else if (!strncmp(cmd, "__USBCHORD__:", 13)) {
+#ifdef POC_HAS_USB_HID
+        const char* p = cmd + 13; const char* colon = strchr(p, ':');
+        if (colon && colon[1] && usbHidMounted()) {
+            char mods[6] = {0}; size_t ml = colon - p; if (ml >= sizeof(mods)) ml = sizeof(mods) - 1;
+            memcpy(mods, p, ml); mods[ml] = 0;
+            usbHidChord(mods, colon[1]);
+        }
+#endif
     } else if (!strncmp(cmd, "__RUNUSB__:", 11)) {
         // Fire a stored OS payload out of the board's USB-HID into the plugged-in PC.
         const char* os = cmd + 11;

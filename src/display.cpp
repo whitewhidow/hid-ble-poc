@@ -100,7 +100,11 @@ static LGFX_Poc lcd;
 
 void dispBegin() {
     lcd.init();
+#if defined(POC_BOARD_TDONGLE)
     lcd.setRotation(1);              // landscape
+#else
+    lcd.setRotation(3);              // T-Embed: landscape, flipped 180
+#endif
     lcd.setBrightness(200);
     lcd.fillScreen(0x000000u);
 }

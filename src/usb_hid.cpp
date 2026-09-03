@@ -89,6 +89,31 @@ const char* usbOsName(int os) {
 
 void usbHidType(const char* s) { int d = bleTypeDelay(); for (const char* p = s; *p; ++p) { Keyboard.write((uint8_t)*p); if (d) delay(d); } }
 
+// One nav/special key over USB (short names shared with the BLE keyboard).
+void usbHidKey(const char* n) {
+    uint8_t k = 0;
+    if      (!strcmp(n, "enter")) k = KEY_RETURN;      else if (!strcmp(n, "esc"))  k = KEY_ESC;
+    else if (!strcmp(n, "bksp"))  k = KEY_BACKSPACE;   else if (!strcmp(n, "tab"))  k = KEY_TAB;
+    else if (!strcmp(n, "space")) { Keyboard.write(' '); return; }
+    else if (!strcmp(n, "del"))   k = KEY_DELETE;      else if (!strcmp(n, "right")) k = KEY_RIGHT_ARROW;
+    else if (!strcmp(n, "left"))  k = KEY_LEFT_ARROW;  else if (!strcmp(n, "down"))  k = KEY_DOWN_ARROW;
+    else if (!strcmp(n, "up"))    k = KEY_UP_ARROW;    else if (!strcmp(n, "home"))  k = KEY_HOME;
+    else if (!strcmp(n, "end"))   k = KEY_END;         else if (!strcmp(n, "pgup"))  k = KEY_PAGE_UP;
+    else if (!strcmp(n, "pgdn"))  k = KEY_PAGE_DOWN;
+    else if (!strcmp(n, "gui"))   { Keyboard.press(KEY_LEFT_GUI); delay(30); Keyboard.releaseAll(); return; }
+    else if (!strcmp(n, "cad"))   { Keyboard.press(KEY_LEFT_CTRL); Keyboard.press(KEY_LEFT_ALT); Keyboard.press(KEY_DELETE); delay(50); Keyboard.releaseAll(); return; }
+    if (k) { Keyboard.press(k); delay(20); Keyboard.releaseAll(); }
+}
+
+// Modifier(c/a/g)+char chord over USB (shift is folded into the char). e.g. "c",'c' = Ctrl+C.
+void usbHidChord(const char* mods, char ch) {
+    for (const char* q = mods; *q; q++) {
+        if (*q == 'c') Keyboard.press(KEY_LEFT_CTRL); else if (*q == 'a') Keyboard.press(KEY_LEFT_ALT); else if (*q == 'g') Keyboard.press(KEY_LEFT_GUI);
+    }
+    if (ch) Keyboard.write((uint8_t)ch);   // press+release the char while the mods stay held
+    delay(20); Keyboard.releaseAll();
+}
+
 static void tapGui(const String& arg) {
     Keyboard.press(KEY_LEFT_GUI);
     if (arg == "SPACE") Keyboard.press(' ');
