@@ -195,12 +195,12 @@ void dispSplash(const char* version, const char* board) {
     lcd.setTextColor(cyan); lcd.drawString("PoC-KBD", W / 2, H / 2);
     // subtitle + accent underline
     lcd.setTextSize(big ? 2 : 1);
-    lcd.setTextColor(mag); lcd.drawString("USB >> BLE HID", W / 2, H / 2 + (big ? 30 : 18));
-    int uw = (int)(W * 0.5); lcd.fillRect((W - uw) / 2, H / 2 + (big ? 46 : 28), uw, 2, cyan);
+    lcd.setTextColor(mag); lcd.drawString("USB >> BLE HID", W / 2, H / 2 + (big ? 30 : 14));
+    if (big) { int uw = (int)(W * 0.5); lcd.fillRect((W - uw) / 2, H / 2 + 46, uw, 2, cyan); } // underline: big screens only (no room on the 80px T-Dongle)
     // footer: version + board
     lcd.setTextSize(1); lcd.setTextColor(dim);
     char f[48]; snprintf(f, sizeof(f), "v%s  -  %s", version, board);
-    lcd.setTextDatum(bottom_center); lcd.drawString(f, W / 2, H - 4);
+    lcd.setTextDatum(bottom_center); lcd.drawString(f, W / 2, H - 3);
     lcd.setTextDatum(top_left);
 }
 
