@@ -192,8 +192,10 @@ void dispBle(bool pc, bool phone, bool usb, bool autorun, bool armboot, int targ
     (void)total;                                                                          // connection count no longer shown
     lcd.setTextColor(autorun ? amb : dim, 0x000000u); lcd.print(autorun ? " A" : " M");   // Auto / Manual
     lcd.setTextColor(armboot ? amb : dim, 0x000000u); lcd.print(" AB");                    // arm-at-boot on(amber)/off(dim)
-    const char* tl = targetOs == 1 ? "L" : targetOs == 2 ? "W" : targetOs == 3 ? "M" : "D"; // target OS: Linux/Win/Mac/Detect
-    lcd.setTextColor(lcd.color888(0x5a, 0xA9, 0xFF), 0x000000u); lcd.print(tl);
+    if (armboot) {   // only meaningful when arm-at-boot is on -> show its target OS
+        const char* tl = targetOs == 1 ? "L" : targetOs == 2 ? "W" : targetOs == 3 ? "M" : "D"; // Linux/Win/Mac/Detect
+        lcd.setTextColor(lcd.color888(0x5a, 0xA9, 0xFF), 0x000000u); lcd.print(tl);
+    }
     // Battery gauge on the right (hidden when batt<0 — C5, or no fuel gauge).
     if (batt >= 0) {
         uint32_t col = batt > 50 ? on : (batt > 20 ? amb : red);
