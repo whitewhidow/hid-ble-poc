@@ -5,6 +5,7 @@ enum PocOS { POC_OS_UNKNOWN = 0, POC_OS_WINDOWS, POC_OS_LINUX, POC_OS_MACOS,
 
 void usbHidBegin();     // real on POC_HAS_USB_HID (S3); no-op stub on the C5
 bool usbHidMounted();   // true when the board's USB is enumerated on a live host (false on C5)
+int  usbHidProtocol();  // USB HID protocol: 0=boot, 1=report, -1=not mounted (always -1 on C5)
 
 // Editing the on-FS payload files over BLE (the phone web page). Real on
 // POC_HAS_USB_HID (LittleFS present); stubbed to false on the C5 (no FS).

@@ -12,6 +12,7 @@ bool pocFsWriteBegin(const char*)           { return false; }
 bool pocFsWriteChunk(const uint8_t*, size_t){ return false; }
 bool pocFsWriteEnd(size_t&)                 { return false; }
 bool usbHidMounted()                        { return false; }   // no USB device role here
+int  usbHidProtocol()                       { return -1; }
 String pocLibList()                         { return String(); }
 bool pocLibRead(const char*, String&)       { return false; }
 bool pocLibWriteBegin(const char*)          { return false; }
@@ -264,7 +265,9 @@ static void usbRunPayloadContent(const String& content) {
 // USB enumerated AND not suspended = a host is really there to receive keystrokes.
 extern "C" bool tud_mounted(void);
 extern "C" bool tud_suspended(void);
+extern "C" uint8_t tud_hid_n_get_protocol(uint8_t instance);
 bool usbHidMounted() { return tud_mounted() && !tud_suspended(); }
+int  usbHidProtocol() { return usbHidMounted() ? (int)tud_hid_n_get_protocol(0) : -1; }   // 0=boot 1=report
 
 void usbRunScript(const char* s) { usbRunPayloadContent(String(s)); }
 

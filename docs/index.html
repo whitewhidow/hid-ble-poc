@@ -39,6 +39,10 @@
   #osk .k:active { background:#22d3e0; color:#04181b; }
   #osk .k.mod.on { background:#1f6feb; color:#fff; border-color:#1f6feb; }
   #osk .k.warn { color:#f7c948; border-color:#7a5c12; }
+  .acc { width:100%; text-align:left; background:#161b22; color:#e6edf3; border:1px solid #30363d; font-weight:600; margin-top:8px; padding:11px 13px; }
+  .acc:hover { border-color:#484f58; }
+  .accpanel { margin:6px 0 2px; }
+  .catlbl { color:#8a97a2; font-size:11px; text-transform:uppercase; letter-spacing:.4px; margin:8px 0 4px; }
 </style>
 </head>
 <body>
@@ -52,6 +56,7 @@
   <span id="stWifi" style="margin-left:auto;color:#8b949e;font-weight:600">WIFI</span>
   <span id="stBle"  style="color:#8b949e;font-weight:600">BLE-HID</span>
   <span id="stUsb"  style="color:#8b949e;font-weight:600">USB-HID</span>
+  <span id="linkinfo" style="flex-basis:100%;color:#5c6772;font-size:11.5px;font-family:ui-monospace,monospace"></span>
 </div>
 
 <div id="app" hidden>
@@ -67,85 +72,69 @@
 
 
   <section id="tab-keyboard">
-    <div class="sub" style="margin:0 0 6px">Keys and the script below go to:</div>
-    <select id="kbtarget" style="width:100%;padding:10px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:15px;margin-bottom:12px">
+    <div class="sub" style="margin:0 0 6px">Everything below goes to:</div>
+    <select id="kbtarget" style="width:100%;padding:10px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:15px">
       <option value="ble">BLE-HID PC</option>
       <option value="usb">USB PC</option>
     </select>
-    <div id="osk"></div>
-    <div class="sub" style="margin:8px 0 0">Shift latches; Ctrl / Alt / ⊞ apply to the next letter (e.g. Ctrl then C = Ctrl+C, ⊞ then R = Win+R). BLE needs the <b>BLE-HID</b> dot ●; USB needs the board plugged into that PC (<b>USB</b> dot ●).</div>
 
-    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Script / text</div>
-    <textarea id="text" rows="4" placeholder="text to type on the PC">hello from my phone</textarea>
-    <div class="row"><button id="send" style="flex:1">Send over BLE-HID</button></div>
-    <div class="sub" style="margin:0">Plain text is typed as-is; each line can also be an Evil Crow command — e.g. <code>GuiR</code>, <code>Delay 500</code>, <code>PrintLine whoami</code>, <code>RunWin notepad</code>, <code>Press KEY_ENTER</code>, <code>CtrlAltT</code>, <code>Consumer volup</code>. Ctrl/⌘+Enter sends. Full list in the <b>Commands</b> tab.</div>
-
-    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Media &amp; system keys — to the target above</div>
-    <div class="row" style="flex-wrap:wrap;gap:6px;margin:0">
-      <button class="sec cc" data-cc="prev">⏮</button>
-      <button class="sec cc" data-cc="playpause">⏯</button>
-      <button class="sec cc" data-cc="next">⏭</button>
-      <button class="sec cc" data-cc="stop">⏹</button>
-      <button class="sec cc" data-cc="mute">🔇</button>
-      <button class="sec cc" data-cc="voldown">🔉</button>
-      <button class="sec cc" data-cc="volup">🔊</button>
-      <button class="sec cc" data-cc="brightdown">🔅</button>
-      <button class="sec cc" data-cc="brightup">🔆</button>
-    </div>
-    <div class="row" style="flex-wrap:wrap;gap:6px;margin:6px 0 0">
-      <button class="sec cc" data-cc="calc">Calc</button>
-      <button class="sec cc" data-cc="email">Email</button>
-      <button class="sec cc" data-cc="files">Files</button>
-      <button class="sec cc" data-cc="browser">Browser</button>
-      <button class="sec cc" data-cc="mediaplayer">Media</button>
-      <button class="sec cc" data-cc="calendar">Calendar</button>
-      <button class="sec cc" data-cc="lock">Lock</button>
-      <button class="sec cc" data-cc="controlpanel">Ctrl Panel</button>
-      <button class="sec cc" data-cc="taskmgr">Tasks</button>
-    </div>
-    <div class="row" style="flex-wrap:wrap;gap:6px;margin:6px 0 0">
-      <button class="sec cc" data-cc="webhome">🌐 Home</button>
-      <button class="sec cc" data-cc="webback">◀ Back</button>
-      <button class="sec cc" data-cc="webfwd">Fwd ▶</button>
-      <button class="sec cc" data-cc="webrefresh">⟳ Refresh</button>
-      <button class="sec cc" data-cc="bookmarks">★ Marks</button>
-      <button class="sec cc" data-cc="search">🔍 Search</button>
-    </div>
-    <div class="row" style="flex-wrap:wrap;gap:6px;margin:6px 0 0">
-      <button class="sec cc" data-cc="undo">↺ Undo</button>
-      <button class="sec cc" data-cc="redo">↻ Redo</button>
-      <button class="sec cc" data-cc="cut">✂ Cut</button>
-      <button class="sec cc" data-cc="copy">⧉ Copy</button>
-      <button class="sec cc" data-cc="paste">📋 Paste</button>
-      <button class="sec cc" data-cc="find">🔎 Find</button>
-    </div>
-    <div class="row" style="gap:8px;margin:6px 0 0">
-      <input id="ccraw" placeholder="any name or raw usage, e.g. 0x1A7" autocomplete="off">
-      <button id="ccsend" class="sec">Send</button>
-    </div>
-    <div class="sub" style="margin:4px 0 0">Send <b>any</b> HID Consumer usage — a name (full list in <b>Commands</b>) or a raw code like <code>0x192</code>. Routed to the target above.</div>
-    <div class="row" style="margin:8px 0 0"><button id="ccalltoggle" class="sec" style="flex:1">▸ All consumer keys</button></div>
-    <div id="ccall" hidden style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px"></div>
-
-    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">System</div>
-    <div class="row" style="gap:6px;margin:0">
-      <button class="sec sys" data-sys="sleep" style="flex:1">💤 Sleep</button>
-      <button class="sec sys" data-sys="wake" style="flex:1">☀ Wake</button>
-      <button class="warn sys" data-sys="power" style="flex:1">⏻ Power</button>
+    <button class="acc" data-panel="secKbd" data-label="Keyboard">▾ Keyboard</button>
+    <div id="secKbd" class="accpanel">
+      <div id="osk"></div>
+      <div class="sub" style="margin:8px 0 0">Shift latches; Ctrl / Alt / ⊞ apply to the next letter (Ctrl then C = Ctrl+C, ⊞ then R = Win+R).</div>
     </div>
 
-    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Mouse</div>
-    <div id="trackpad" style="height:120px;background:#161b22;border:1px solid #30363d;border-radius:10px;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;color:#5c6772;font-size:12px">drag here to move the pointer</div>
-    <div class="row" style="gap:6px;margin:6px 0 0">
-      <button class="sec mb" data-mb="l" style="flex:1">Left</button>
-      <button class="sec mb" data-mb="m" style="flex:1">Middle</button>
-      <button class="sec mb" data-mb="r" style="flex:1">Right</button>
-      <button class="sec mw" data-mw="1" style="flex:1">Scroll ↑</button>
-      <button class="sec mw" data-mw="-1" style="flex:1">Scroll ↓</button>
+    <button class="acc" data-panel="secScript" data-label="Script / text">▸ Script / text</button>
+    <div id="secScript" class="accpanel" hidden>
+      <textarea id="text" rows="4" placeholder="text to type on the PC">hello from my phone</textarea>
+      <div class="row"><button id="send" style="flex:1">Send over BLE-HID</button></div>
+      <div class="sub" style="margin:0">Plain text is typed as-is; each line can also be an Evil Crow command — <code>GuiR</code>, <code>Delay 500</code>, <code>PrintLine whoami</code>, <code>RunWin notepad</code>, <code>Consumer volup</code>. Ctrl/⌘+Enter sends. Full list in <b>Commands</b>.</div>
     </div>
 
-    <div class="row" style="margin:18px 0 0"><button id="fntoggle" class="sec" style="flex:1">▸ Function / numpad / editing keys</button></div>
-    <div id="fnpanel" hidden style="margin-top:6px"></div>
+    <button class="acc" data-panel="secMedia" data-label="Media &amp; consumer keys">▸ Media &amp; consumer keys</button>
+    <div id="secMedia" class="accpanel" hidden>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin:0">
+        <button class="sec cc" data-cc="prev">⏮</button>
+        <button class="sec cc" data-cc="playpause">⏯</button>
+        <button class="sec cc" data-cc="next">⏭</button>
+        <button class="sec cc" data-cc="stop">⏹</button>
+        <button class="sec cc" data-cc="mute">🔇</button>
+        <button class="sec cc" data-cc="voldown">🔉</button>
+        <button class="sec cc" data-cc="volup">🔊</button>
+        <button class="sec cc" data-cc="brightdown">🔅</button>
+        <button class="sec cc" data-cc="brightup">🔆</button>
+      </div>
+      <div class="row" style="gap:8px;margin:8px 0 0">
+        <input id="ccraw" placeholder="any name or raw usage, e.g. 0x1A7" autocomplete="off">
+        <button id="ccsend" class="sec">Send</button>
+      </div>
+      <div class="sub" style="margin:4px 0 0">Send <b>any</b> HID Consumer usage — a name or a raw code like <code>0x192</code>.</div>
+      <div id="ccall" style="margin-top:6px"></div>
+    </div>
+
+    <button class="acc" data-panel="secSys" data-label="System (power / sleep / wake)">▸ System (power / sleep / wake)</button>
+    <div id="secSys" class="accpanel" hidden>
+      <div class="row" style="gap:6px;margin:0">
+        <button class="sec sys" data-sys="sleep" style="flex:1">💤 Sleep</button>
+        <button class="sec sys" data-sys="wake" style="flex:1">☀ Wake</button>
+        <button class="warn sys" data-sys="power" style="flex:1">⏻ Power</button>
+      </div>
+    </div>
+
+    <button class="acc" data-panel="secMouse" data-label="Mouse">▸ Mouse</button>
+    <div id="secMouse" class="accpanel" hidden>
+      <div id="trackpad" style="height:120px;background:#161b22;border:1px solid #30363d;border-radius:10px;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;color:#5c6772;font-size:12px">drag here to move the pointer</div>
+      <div class="row" style="gap:6px;margin:6px 0 0">
+        <button class="sec mb" data-mb="l" style="flex:1">Left</button>
+        <button class="sec mb" data-mb="m" style="flex:1">Middle</button>
+        <button class="sec mb" data-mb="r" style="flex:1">Right</button>
+        <button class="sec mw" data-mw="1" style="flex:1">Scroll ↑</button>
+        <button class="sec mw" data-mw="-1" style="flex:1">Scroll ↓</button>
+      </div>
+    </div>
+
+    <button class="acc" data-panel="fnpanel" data-label="Function / numpad / editing keys">▸ Function / numpad / editing keys</button>
+    <div id="fnpanel" class="accpanel" hidden></div>
   </section>
 
   <section id="tab-payloads" hidden>
@@ -418,6 +407,7 @@ $('connect').onclick = async () => {
     setTimeout(refreshSettings, 500);                       // then settings incl. fw (spaced; avoids clobbering the trio)
     setTimeout(refreshSettings, 3500);                      // re-query: a board auto-firing at boot drops the first pass
     refreshTimer = setInterval(() => { if (!busy) sendCmd('__BONDS__'); }, 3000);   // auto-refresh (paused during file ops)
+    setInterval(() => { if (!busy && rxCh) sendCmd('__STATUS__'); }, 6000);          // live transport status + RSSI
   } catch (e) { $('stat').textContent = '✖ ' + e.message; }
 };
 
@@ -449,6 +439,13 @@ function renderStatus(v){
   if ((m = /ble=(\d)/.exec(v)))  set('stBle',  m[1] === '1');
   if ((m = /usb=(\d)/.exec(v)))  set('stUsb',  m[1] === '1');
   if ((m = /wifi=(\d)/.exec(v))) set('stWifi', m[1] === '1');
+  const li = $('linkinfo');
+  if (li) {
+    const mp = /proto=(-?\d)/.exec(v), mr = /rssi=(-?\d+)/.exec(v), parts = [];
+    if (mp) parts.push('USB HID: ' + (mp[1] === '1' ? 'report' : mp[1] === '0' ? 'boot' : '—'));
+    if (mr) parts.push('BLE RSSI: ' + (mr[1] === '0' ? '—' : mr[1] + ' dBm'));
+    if (parts.length) li.textContent = parts.join('   ·   ');
+  }
 }
 
 // ---- arm-at-boot dropdown ("Manual arm" + a target OS) -------------------
@@ -510,14 +507,31 @@ function buildOSK(){
 buildOSK();
 // media / consumer-control keys -> BLE or USB per the keyboard target.
 // Full named Consumer page (mirrors src/consumer_keys.h) -> a hidden "all keys" panel.
-const CC_ALL = ['power','reset','sleep','sleepafter','sleepmode','illumination','functionbuttons','menu','menupick','menuup','menudown','menuleft','menuright','menuescape','menuinc','menudec','dataonscreen','closedcaption','snapshot','still','brightup','brightdown','assign','modestep','recalllast','enterchannel','ordermovie','channelup','channeldown','play','pause','record','ff','rewind','next','prev','stop','eject','randomplay','repeat','stopeject','playpause','balance','mute','bass','treble','bassboost','surround','loudness','volup','voldown','launchconfig','progbuttonconfig','mediaplayer','wordproc','texteditor','spreadsheet','graphicseditor','presentation','database','email','newsreader','voicemail','contacts','calendar','taskmgr','log','finance','calc','avcapture','files','lanbrowser','browser','remotenetworking','netconference','netchat','telephony','logon','logoff','logonoff','lock','controlpanel','commandline','processmanager','selecttask','nexttask','prevtask','halttask','helpcenter','documents','thesaurus','dictionary','desktop','spellcheck','grammarcheck','wirelessstatus','keyboardlayout','virusprotection','encryption','screensaver','alarms','clock','filebrowser','powerstatus','imagebrowser','audiobrowser','moviebrowser','drm','wallet','im','oemtips','oemhelp','onlinecommunity','entertainment','shopping','smartcard','homefinance','businessfinance','reference','searchbrowser','audioplayer','new','open','close','exit','maximize','minimize','save','print','properties','undo','copy','cut','paste','selectall','find','findreplace','search','goto','webhome','webback','webfwd','webstop','webrefresh','prevlink','nextlink','bookmarks','history','subscriptions','zoomin','zoomout','zoom','fullscreen','normalview','viewtoggle','scrollup','scrolldown','scroll','panleft','panright','pan','newwindow','tilehoriz','tilevert','format','edit','bold','italics','underline','strikethrough','subscript','superscript','allcaps','rotate','resize','fliphoriz','flipvert','justifyleft','justifycenter','justifyright','justifyblock','indent','outdent','redo','reply','replyall','forwardmsg','send','attachfile','spellcheck2','cancel','next2','prev2'];
+// Consumer keys grouped into their HID Consumer-page sections.
+const CC_CATS = [
+  ['Media transport', ['play','pause','playpause','stop','next','prev','ff','rewind','record','eject','randomplay','repeat','stopeject']],
+  ['Audio', ['mute','volup','voldown','balance','bass','treble','bassboost','surround','loudness']],
+  ['Display', ['brightup','brightdown','dataonscreen','closedcaption','snapshot','still']],
+  ['Power / menu / channel', ['power','reset','sleep','sleepafter','sleepmode','illumination','functionbuttons','menu','menupick','menuup','menudown','menuleft','menuright','menuescape','menuinc','menudec','channelup','channeldown','assign','modestep','recalllast','enterchannel','ordermovie']],
+  ['App launch', ['launchconfig','progbuttonconfig','mediaplayer','wordproc','texteditor','spreadsheet','graphicseditor','presentation','database','email','newsreader','voicemail','contacts','calendar','taskmgr','log','finance','calc','avcapture','files','lanbrowser','browser','remotenetworking','netconference','netchat','telephony','logon','logoff','logonoff','lock','controlpanel','commandline','processmanager','selecttask','nexttask','prevtask','halttask','helpcenter','documents','thesaurus','dictionary','desktop','spellcheck','grammarcheck','wirelessstatus','keyboardlayout','virusprotection','encryption','screensaver','alarms','clock','filebrowser','powerstatus','imagebrowser','audiobrowser','moviebrowser','drm','wallet','im','oemtips','oemhelp','onlinecommunity','entertainment','shopping','smartcard','homefinance','businessfinance','reference','searchbrowser','audioplayer']],
+  ['App control — file / edit', ['new','open','close','exit','maximize','minimize','save','print','properties','undo','redo','cut','copy','paste','selectall','find','findreplace','search','goto']],
+  ['Browser / navigation', ['webhome','webback','webfwd','webstop','webrefresh','prevlink','nextlink','bookmarks','history','subscriptions','zoomin','zoomout','zoom','fullscreen','normalview','viewtoggle','scrollup','scrolldown','scroll','panleft','panright','pan','newwindow','tilehoriz','tilevert','format','edit']],
+  ['Formatting', ['bold','italics','underline','strikethrough','subscript','superscript','allcaps','rotate','resize','fliphoriz','flipvert','justifyleft','justifycenter','justifyright','justifyblock','indent','outdent']],
+  ['Messaging / actions', ['reply','replyall','forwardmsg','send','attachfile','spellcheck2','cancel','next2','prev2']],
+];
 const ccBox = $('ccall');
-if (ccBox) for (const n of CC_ALL) { const b = document.createElement('button'); b.className = 'sec cc'; b.style.cssText = 'font:12px ui-monospace,monospace;padding:6px 8px'; b.dataset.cc = n; b.textContent = n; ccBox.appendChild(b); }
+if (ccBox) for (const [title, names] of CC_CATS) {
+  const h = document.createElement('div'); h.className = 'catlbl'; h.textContent = title; ccBox.appendChild(h);
+  const row = document.createElement('div'); row.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px';
+  for (const n of names) { const b = document.createElement('button'); b.className = 'sec cc'; b.style.cssText = 'font:12px ui-monospace,monospace;padding:6px 8px'; b.dataset.cc = n; b.textContent = n; row.appendChild(b); }
+  ccBox.appendChild(row);
+}
 function ccFire(name){ if (rxCh && name) sendCmd((kbT() === 'usb' ? '__USBCC__:' : '__BLECC__:') + name); }
 for (const b of document.querySelectorAll('.cc')) b.onclick = () => ccFire(b.dataset.cc);
 if ($('ccsend')) $('ccsend').onclick = () => { const v = $('ccraw').value.trim(); if (v) { ccFire(v); log('cc: ' + v); } };
 if ($('ccraw')) $('ccraw').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('ccsend').onclick(); } });
-if ($('ccalltoggle')) $('ccalltoggle').onclick = () => { const x = $('ccall'); x.hidden = !x.hidden; $('ccalltoggle').textContent = (x.hidden ? '▸' : '▾') + ' All consumer keys'; };
+// collapsible accordion sections
+for (const b of document.querySelectorAll('.acc')) b.onclick = () => { const p = $(b.dataset.panel); if (!p) return; p.hidden = !p.hidden; b.textContent = (p.hidden ? '▸ ' : '▾ ') + b.dataset.label; };
 
 // ---- system control (power/sleep/wake) -----------------------------------
 for (const b of document.querySelectorAll('.sys')) b.onclick = () => { if (rxCh) sendCmd((kbT() === 'usb' ? '__USBSYS__:' : '__BLESYS__:') + b.dataset.sys); };
@@ -556,7 +570,6 @@ if (fnp) {
   mk(FN, 'Function keys'); mk(NUMPAD, 'Numpad'); mk(EDIT, 'Editing / system (BLE)');
 }
 for (const b of document.querySelectorAll('.kk')) b.onclick = () => { if (rxCh) sendCmd((kbT() === 'usb' ? '__USBKEY__:' : '__BLEKEY__:') + b.dataset.kk); };
-if ($('fntoggle')) $('fntoggle').onclick = () => { const x = $('fnpanel'); x.hidden = !x.hidden; $('fntoggle').textContent = (x.hidden ? '▸' : '▾') + ' Function / numpad / editing keys'; };
 
 // ---- fire a payload over USB into the plugged-in PC ----------------------
 // ---- fire a slot payload over the selected transport (BLE or USB) --------

@@ -67,6 +67,14 @@ static void ctrlNotify(const char* s) { if (ctrlTx) { ctrlTx->setValue((uint8_t*
 // surface what it's doing in the phone/web "board feedback" log.
 void bleHidNotify(const char* s) { ctrlNotify(s); }
 
+// RSSI (dBm) of the phone/control link; 0 = unavailable.
+extern "C" int ble_gap_conn_rssi(uint16_t conn_handle, int8_t *out_rssi);
+static int bleRssi() {
+    if (!g_ctrlReady || g_phoneHandle == 0xFFFF) return 0;
+    int8_t r = 0;
+    return (ble_gap_conn_rssi(g_phoneHandle, &r) == 0) ? (int)r : 0;
+}
+
 // keep advertising after a connection so a 2nd central (phone AND PC) can join.
 class SrvCB : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer*, NimBLEConnInfo&) override { g_conns++; NimBLEDevice::startAdvertising(); }
@@ -553,7 +561,7 @@ static void handleCmd(const char* cmd) {
     } else if (!strcmp(cmd, "__STATUS__")) {
         // Live transport status: ble = a PC subscribed to our BLE-HID; usb = our
         // USB device is enumerated on a host (only meaningful on the S3 boards).
-        char b[36]; snprintf(b, sizeof(b), "st:ble=%d:usb=%d:wifi=%d", g_hidReady ? 1 : 0, usbHidMounted() ? 1 : 0, (WiFi.status() == WL_CONNECTED) ? 1 : 0);
+        char b[64]; snprintf(b, sizeof(b), "st:ble=%d:usb=%d:wifi=%d:proto=%d:rssi=%d", g_hidReady ? 1 : 0, usbHidMounted() ? 1 : 0, (WiFi.status() == WL_CONNECTED) ? 1 : 0, usbHidProtocol(), bleRssi());
         ctrlNotify(b);
     } else if (!strncmp(cmd, "__BLETYPE__:", 12)) {
         bleHidType(cmd + 12);   // literal keystrokes over BLE-HID (Enter='\n', Tab='\t')
@@ -739,7 +747,7 @@ void bleHidTick() {
         int8_t b = g_hidReady ? 1 : 0, u = usbHidMounted() ? 1 : 0, w = (WiFi.status() == WL_CONNECTED) ? 1 : 0;
         if (b != lastBle || u != lastUsb || w != lastWifi) {
             lastBle = b; lastUsb = u; lastWifi = w;
-            char s[36]; snprintf(s, sizeof(s), "st:ble=%d:usb=%d:wifi=%d", b, u, w); ctrlNotify(s);
+            char s[64]; snprintf(s, sizeof(s), "st:ble=%d:usb=%d:wifi=%d:proto=%d:rssi=%d", b, u, w, usbHidProtocol(), bleRssi()); ctrlNotify(s);
         }
     } else { lastBle = lastUsb = lastWifi = -1; }
 }
