@@ -20,6 +20,8 @@
 
 static NimBLECharacteristic* input    = nullptr; // HID keyboard input report (-> PC)
 static NimBLECharacteristic* consumer = nullptr; // HID consumer-control input report (-> PC)
+static NimBLECharacteristic* sysctl   = nullptr; // HID system-control input report (-> PC)
+static NimBLECharacteristic* mouse    = nullptr; // HID mouse input report (-> PC)
 static NimBLECharacteristic* ctrlTx   = nullptr; // control notify (-> phone)
 static volatile bool g_hidReady = false;         // PC subscribed to the HID report
 static int           g_conns    = 0;
@@ -43,6 +45,20 @@ static const uint8_t REPORT_MAP[] = {
     0x05, 0x0C, 0x09, 0x01, 0xA1, 0x01,
     0x85, 0x02,
     0x15, 0x00, 0x27, 0xFF, 0xFF, 0x00, 0x00, 0x19, 0x00, 0x2A, 0xFF, 0xFF, 0x75, 0x10, 0x95, 0x01, 0x81, 0x00,
+    0xC0,
+    // System Control (Report ID 3) — 1=power down (0x81), 2=sleep (0x82), 3=wake (0x83)
+    0x05, 0x01, 0x09, 0x80, 0xA1, 0x01,
+    0x85, 0x03,
+    0x19, 0x81, 0x29, 0x83, 0x15, 0x01, 0x25, 0x03, 0x95, 0x01, 0x75, 0x08, 0x81, 0x00,
+    0xC0,
+    // Mouse (Report ID 4) — 5 buttons + relative X/Y/Wheel
+    0x05, 0x01, 0x09, 0x02, 0xA1, 0x01,
+    0x85, 0x04,
+    0x09, 0x01, 0xA1, 0x00,
+    0x05, 0x09, 0x19, 0x01, 0x29, 0x05, 0x15, 0x00, 0x25, 0x01, 0x95, 0x05, 0x75, 0x01, 0x81, 0x02,
+    0x95, 0x01, 0x75, 0x03, 0x81, 0x01,
+    0x05, 0x01, 0x09, 0x30, 0x09, 0x31, 0x09, 0x38, 0x15, 0x81, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x03, 0x81, 0x06,
+    0xC0,
     0xC0
 };
 
@@ -114,6 +130,40 @@ static void bleConsumer(uint16_t usage) {
     uint8_t z[2] = { 0, 0 };
     consumer->setValue(z, 2); consumer->notify(); delay(12);
 }
+
+// System control over BLE (report 3): 1=power down, 2=sleep, 3=wake.
+static void bleSysCtl(uint8_t code) {
+    if (!g_hidReady || !sysctl) { ctrlNotify("no HID host paired"); return; }
+    uint8_t r[1] = { code }; sysctl->setValue(r, 1); sysctl->notify(); delay(12);
+    uint8_t z[1] = { 0 };    sysctl->setValue(z, 1); sysctl->notify(); delay(12);
+}
+// Mouse over BLE (report 4): [buttons, dx, dy, wheel] relative.
+static void bleMouse(int dx, int dy, int wheel, uint8_t buttons) {
+    if (!g_hidReady || !mouse) { ctrlNotify("no HID host paired"); return; }
+    uint8_t r[4] = { buttons, (uint8_t)(int8_t)dx, (uint8_t)(int8_t)dy, (uint8_t)(int8_t)wheel };
+    mouse->setValue(r, 4); mouse->notify(); delay(8);
+}
+static void bleMouseClick(uint8_t buttons) { bleMouse(0, 0, 0, buttons); delay(20); bleMouse(0, 0, 0, 0); }
+
+static uint8_t mouseBtn(char c) { return c == 'r' ? 0x02 : c == 'm' ? 0x04 : 0x01; }   // default left
+// Mouse command args: "m:dx,dy,w" move, "c:b" click (b = l/r/m).
+static void dispatchMouse(const char* s, bool usb) {
+    (void)usb;
+    if (s[0] == 'm' && s[1] == ':') {
+        int dx = 0, dy = 0, w = 0; sscanf(s + 2, "%d,%d,%d", &dx, &dy, &w);
+#ifdef POC_HAS_USB_HID
+        if (usb) { usbMouseMove(dx, dy, w); return; }
+#endif
+        bleMouse(dx, dy, w, 0);
+    } else if (s[0] == 'c' && s[1] == ':') {
+        uint8_t b = mouseBtn(s[2]);
+#ifdef POC_HAS_USB_HID
+        if (usb) { usbMouseClick(b); return; }
+#endif
+        bleMouseClick(b);
+    }
+}
+static uint8_t sysCode(const char* n) { return !strcmp(n, "power") ? 1 : !strcmp(n, "sleep") ? 2 : !strcmp(n, "wake") ? 3 : 0; }
 
 // ---------------------------------------------------------------------------
 // Keystroke-script interpreter (Evil Crow Cable "Wind" syntax) over BLE HID.
@@ -248,6 +298,8 @@ void bleHidBegin() {
     input = hid->getInputReport(1);
     input->setCallbacks(new HidSubCB());
     consumer = hid->getInputReport(2);   // consumer-control report (media / app keys)
+    sysctl   = hid->getInputReport(3);   // system-control report (power / sleep / wake)
+    mouse    = hid->getInputReport(4);   // mouse report (move / buttons / wheel)
     hid->setBatteryLevel(100);
 
     // Custom control service for the phone web page.
@@ -518,6 +570,29 @@ static void handleCmd(const char* cmd) {
         else if (!strcmp(n, "pgup"))  key = 0x4B;   else if (!strcmp(n, "pgdn"))  key = 0x4E;
         else if (!strcmp(n, "gui"))   mod = 0x08;                          // Win/Cmd tap
         else if (!strcmp(n, "cad"))   { mod = 0x01 | 0x04; key = 0x4C; }   // Ctrl+Alt+Del
+        else if (!strcmp(n, "ins"))   key = 0x49;   else if (!strcmp(n, "caps")) key = 0x39;
+        else if (!strcmp(n, "prtsc")) key = 0x46;   else if (!strcmp(n, "sclk")) key = 0x47;
+        else if (!strcmp(n, "pause")) key = 0x48;   else if (!strcmp(n, "app"))  key = 0x76;
+        else if (!strcmp(n, "numlk")) key = 0x53;
+        // function keys F1-F24
+        else if (n[0] == 'f' && n[1] >= '1' && n[1] <= '9') { int f = atoi(n + 1); if (f >= 1 && f <= 12) key = 0x3A + (f - 1); else if (f >= 13 && f <= 24) key = 0x68 + (f - 13); }
+        // numpad
+        else if (!strcmp(n, "kp0"))    key = 0x62;  else if (!strcmp(n, "kp1")) key = 0x59;
+        else if (!strcmp(n, "kp2"))    key = 0x5A;  else if (!strcmp(n, "kp3")) key = 0x5B;
+        else if (!strcmp(n, "kp4"))    key = 0x5C;  else if (!strcmp(n, "kp5")) key = 0x5D;
+        else if (!strcmp(n, "kp6"))    key = 0x5E;  else if (!strcmp(n, "kp7")) key = 0x5F;
+        else if (!strcmp(n, "kp8"))    key = 0x60;  else if (!strcmp(n, "kp9")) key = 0x61;
+        else if (!strcmp(n, "kpdot"))  key = 0x63;  else if (!strcmp(n, "kpenter")) key = 0x58;
+        else if (!strcmp(n, "kpplus")) key = 0x57;  else if (!strcmp(n, "kpminus")) key = 0x56;
+        else if (!strcmp(n, "kpstar")) key = 0x55;  else if (!strcmp(n, "kpslash")) key = 0x54;
+        else if (!strcmp(n, "kpequal"))key = 0x67;
+        // keyboard-page editing / system keys (BLE only; USB uses the consumer AC equivalents)
+        else if (!strcmp(n, "execute"))key = 0x74;  else if (!strcmp(n, "help")) key = 0x75;
+        else if (!strcmp(n, "select")) key = 0x77;  else if (!strcmp(n, "kstop")) key = 0x78;
+        else if (!strcmp(n, "again"))  key = 0x79;  else if (!strcmp(n, "kundo")) key = 0x7A;
+        else if (!strcmp(n, "kcut"))   key = 0x7B;  else if (!strcmp(n, "kcopy")) key = 0x7C;
+        else if (!strcmp(n, "kpaste")) key = 0x7D;  else if (!strcmp(n, "kfind")) key = 0x7E;
+        else if (!strcmp(n, "kpower")) key = 0x66;
         if (key || mod) {
             if (!g_hidReady || !input) ctrlNotify("no HID host paired");
             else { sendReport(mod, key); ctrlNotify("key"); }
@@ -557,6 +632,27 @@ static void handleCmd(const char* cmd) {
         if (!u) ctrlNotify("cc: unknown");
         else if (!usbHidMounted()) ctrlNotify("usb: no host");
         else { char b[48]; snprintf(b, sizeof(b), "cc: %s (0x%X) usb", cmd + 10, u); ctrlNotify(b); usbConsumer(u); }
+#else
+        ctrlNotify("usb: no usb-hid on this board");
+#endif
+    } else if (!strncmp(cmd, "__BLESYS__:", 11)) {
+        uint8_t c = sysCode(cmd + 11);
+        if (!c) ctrlNotify("sys: unknown");
+        else { char b[24]; snprintf(b, sizeof(b), "sys: %s ble", cmd + 11); ctrlNotify(b); bleSysCtl(c); }
+    } else if (!strncmp(cmd, "__USBSYS__:", 11)) {
+#ifdef POC_HAS_USB_HID
+        uint8_t c = sysCode(cmd + 11);
+        if (!c) ctrlNotify("sys: unknown");
+        else if (!usbHidMounted()) ctrlNotify("usb: no host");
+        else { char b[24]; snprintf(b, sizeof(b), "sys: %s usb", cmd + 11); ctrlNotify(b); usbSysCtl(c); }
+#else
+        ctrlNotify("usb: no usb-hid on this board");
+#endif
+    } else if (!strncmp(cmd, "__BLEMOUSE__:", 13)) {
+        dispatchMouse(cmd + 13, false);
+    } else if (!strncmp(cmd, "__USBMOUSE__:", 13)) {
+#ifdef POC_HAS_USB_HID
+        if (usbHidMounted()) dispatchMouse(cmd + 13, true); else ctrlNotify("usb: no host");
 #else
         ctrlNotify("usb: no usb-hid on this board");
 #endif

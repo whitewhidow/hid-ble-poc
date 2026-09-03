@@ -31,5 +31,10 @@ void        usbHidKey(const char* shortName);        // one nav/special key over
 void        usbHidChord(const char* mods, char ch);  // modifier(c/a/g)+char chord over USB
 void        usbRunScript(const char* s);             // run an Evil-Crow script string over USB
 void        usbConsumer(uint16_t usage);             // media / consumer-control key over USB
+void        usbSysCtl(uint8_t code);                 // system control: 1=power 2=sleep 3=wake
+void        usbMouseMove(int dx, int dy, int wheel); // relative mouse move + wheel
+void        usbMouseClick(uint8_t buttons);          // mouse click (MOUSE_LEFT/RIGHT/MIDDLE bits)
+void        usbMousePress(uint8_t buttons);
+void        usbMouseRelease(uint8_t buttons);
 void        usbSamplePayload(int os);   // runs the OS's payload file from LittleFS
 #endif

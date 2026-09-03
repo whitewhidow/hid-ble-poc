@@ -126,6 +126,26 @@
     <div class="sub" style="margin:4px 0 0">Send <b>any</b> HID Consumer usage — a name (full list in <b>Commands</b>) or a raw code like <code>0x192</code>. Routed to the target above.</div>
     <div class="row" style="margin:8px 0 0"><button id="ccalltoggle" class="sec" style="flex:1">▸ All consumer keys</button></div>
     <div id="ccall" hidden style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px"></div>
+
+    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">System</div>
+    <div class="row" style="gap:6px;margin:0">
+      <button class="sec sys" data-sys="sleep" style="flex:1">💤 Sleep</button>
+      <button class="sec sys" data-sys="wake" style="flex:1">☀ Wake</button>
+      <button class="warn sys" data-sys="power" style="flex:1">⏻ Power</button>
+    </div>
+
+    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Mouse</div>
+    <div id="trackpad" style="height:120px;background:#161b22;border:1px solid #30363d;border-radius:10px;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;color:#5c6772;font-size:12px">drag here to move the pointer</div>
+    <div class="row" style="gap:6px;margin:6px 0 0">
+      <button class="sec mb" data-mb="l" style="flex:1">Left</button>
+      <button class="sec mb" data-mb="m" style="flex:1">Middle</button>
+      <button class="sec mb" data-mb="r" style="flex:1">Right</button>
+      <button class="sec mw" data-mw="1" style="flex:1">Scroll ↑</button>
+      <button class="sec mw" data-mw="-1" style="flex:1">Scroll ↓</button>
+    </div>
+
+    <div class="row" style="margin:18px 0 0"><button id="fntoggle" class="sec" style="flex:1">▸ Function / numpad / editing keys</button></div>
+    <div id="fnpanel" hidden style="margin-top:6px"></div>
   </section>
 
   <section id="tab-payloads" hidden>
@@ -498,6 +518,45 @@ for (const b of document.querySelectorAll('.cc')) b.onclick = () => ccFire(b.dat
 if ($('ccsend')) $('ccsend').onclick = () => { const v = $('ccraw').value.trim(); if (v) { ccFire(v); log('cc: ' + v); } };
 if ($('ccraw')) $('ccraw').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('ccsend').onclick(); } });
 if ($('ccalltoggle')) $('ccalltoggle').onclick = () => { const x = $('ccall'); x.hidden = !x.hidden; $('ccalltoggle').textContent = (x.hidden ? '▸' : '▾') + ' All consumer keys'; };
+
+// ---- system control (power/sleep/wake) -----------------------------------
+for (const b of document.querySelectorAll('.sys')) b.onclick = () => { if (rxCh) sendCmd((kbT() === 'usb' ? '__USBSYS__:' : '__BLESYS__:') + b.dataset.sys); };
+
+// ---- mouse: trackpad drag + buttons + wheel ------------------------------
+function mouseCmd(arg){ if (rxCh) sendCmd((kbT() === 'usb' ? '__USBMOUSE__:' : '__BLEMOUSE__:') + arg); }
+for (const b of document.querySelectorAll('.mb')) b.onclick = () => mouseCmd('c:' + b.dataset.mb);
+for (const b of document.querySelectorAll('.mw')) b.onclick = () => mouseCmd('m:0,0,' + b.dataset.mw);
+const tp = $('trackpad');
+if (tp) {
+  let lx = 0, ly = 0, down = false, last = 0;
+  const clamp = v => Math.max(-127, Math.min(127, Math.round(v)));
+  tp.addEventListener('pointerdown', e => { down = true; lx = e.clientX; ly = e.clientY; try { tp.setPointerCapture(e.pointerId); } catch (x) {} });
+  tp.addEventListener('pointermove', e => {
+    if (!down) return;
+    const now = performance.now(); if (now - last < 40) return; last = now;   // ~25 updates/s
+    const dx = clamp(e.clientX - lx), dy = clamp(e.clientY - ly);
+    lx = e.clientX; ly = e.clientY;
+    if (dx || dy) mouseCmd('m:' + dx + ',' + dy + ',0');
+  });
+  const up = () => { down = false; }; tp.addEventListener('pointerup', up); tp.addEventListener('pointercancel', up);
+}
+
+// ---- function / numpad / editing keys panel ------------------------------
+const fnp = $('fnpanel');
+if (fnp) {
+  const FN = []; for (let i = 1; i <= 24; i++) FN.push('f' + i);
+  const NUMPAD = ['kp7','kp8','kp9','kpslash','kp4','kp5','kp6','kpstar','kp1','kp2','kp3','kpminus','kp0','kpdot','kpenter','kpplus','numlk','kpequal'];
+  const EDIT = ['ins','del','home','end','pgup','pgdn','prtsc','sclk','pause','app','execute','help','select','kcut','kcopy','kpaste','kundo','again','kfind','kpower'];
+  const mk = (arr, title) => {
+    const h = document.createElement('div'); h.style.cssText = 'color:#8a97a2;font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin:8px 0 4px'; h.textContent = title; fnp.appendChild(h);
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px';
+    for (const n of arr) { const b = document.createElement('button'); b.className = 'sec kk'; b.style.cssText = 'font:12px ui-monospace,monospace;padding:6px 8px'; b.dataset.kk = n; b.textContent = n; row.appendChild(b); }
+    fnp.appendChild(row);
+  };
+  mk(FN, 'Function keys'); mk(NUMPAD, 'Numpad'); mk(EDIT, 'Editing / system (BLE)');
+}
+for (const b of document.querySelectorAll('.kk')) b.onclick = () => { if (rxCh) sendCmd((kbT() === 'usb' ? '__USBKEY__:' : '__BLEKEY__:') + b.dataset.kk); };
+if ($('fntoggle')) $('fntoggle').onclick = () => { const x = $('fnpanel'); x.hidden = !x.hidden; $('fntoggle').textContent = (x.hidden ? '▸' : '▾') + ' Function / numpad / editing keys'; };
 
 // ---- fire a payload over USB into the plugged-in PC ----------------------
 // ---- fire a slot payload over the selected transport (BLE or USB) --------

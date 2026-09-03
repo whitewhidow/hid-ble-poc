@@ -25,6 +25,8 @@ String pocSlotAssignments()                 { return String(); }
 #include "USB.h"
 #include "USBHIDKeyboard.h"
 #include "USBHIDConsumerControl.h"
+#include "USBHIDMouse.h"
+#include "USBHIDSystemControl.h"
 // Stock header lacks these; press() maps KEY_x-0x88 -> HID usage.
 #ifndef KEY_NUM_LOCK
 #define KEY_NUM_LOCK    0xDB
@@ -35,9 +37,18 @@ String pocSlotAssignments()                 { return String(); }
 
 static USBHIDKeyboard Keyboard;
 static USBHIDConsumerControl ConsumerControl;
+static USBHIDRelativeMouse Mouse;
+static USBHIDSystemControl SysControl;
 
 // Media / consumer-control key over USB (press + release the 16-bit usage).
 void usbConsumer(uint16_t usage) { ConsumerControl.press(usage); delay(30); ConsumerControl.release(); }
+// System control over USB: 1=power off, 2=standby/sleep, 3=wake.
+void usbSysCtl(uint8_t code) { SysControl.press(code); delay(30); SysControl.release(); }
+// Mouse over USB: relative move + wheel, and a button click.
+void usbMouseMove(int dx, int dy, int wheel) { Mouse.move((int8_t)dx, (int8_t)dy, (int8_t)wheel); }
+void usbMouseClick(uint8_t buttons) { Mouse.click(buttons); }
+void usbMousePress(uint8_t buttons) { Mouse.press(buttons); }
+void usbMouseRelease(uint8_t buttons) { Mouse.release(buttons); }
 
 static volatile bool          led_response_received = false;
 static volatile int           led_event_count = 0;
@@ -114,6 +125,23 @@ void usbHidKey(const char* n) {
     else if (!strcmp(n, "pgdn"))  k = KEY_PAGE_DOWN;
     else if (!strcmp(n, "gui"))   { Keyboard.press(KEY_LEFT_GUI); delay(30); Keyboard.releaseAll(); return; }
     else if (!strcmp(n, "cad"))   { Keyboard.press(KEY_LEFT_CTRL); Keyboard.press(KEY_LEFT_ALT); Keyboard.press(KEY_DELETE); delay(50); Keyboard.releaseAll(); return; }
+    else if (!strcmp(n, "ins"))   k = 0x49 + 0x88;   else if (!strcmp(n, "caps")) k = 0x39 + 0x88;
+    else if (!strcmp(n, "prtsc")) k = 0x46 + 0x88;   else if (!strcmp(n, "sclk")) k = 0x47 + 0x88;
+    else if (!strcmp(n, "pause")) k = 0x48 + 0x88;   else if (!strcmp(n, "app"))  k = 0x76 + 0x88;
+    else if (!strcmp(n, "numlk")) k = 0x53 + 0x88;   else if (!strcmp(n, "execute")) k = 0x74 + 0x88;
+    else if (!strcmp(n, "help"))  k = 0x75 + 0x88;   else if (!strcmp(n, "select"))  k = 0x77 + 0x88;
+    // function keys F1-F24 (usage 0x3A-0x45, 0x68-0x73) -> Arduino keycode usage+0x88
+    else if (n[0] == 'f' && n[1] >= '1' && n[1] <= '9') { int f = atoi(n + 1); uint8_t us = (f >= 1 && f <= 12) ? 0x3A + (f - 1) : (f >= 13 && f <= 24) ? 0x68 + (f - 13) : 0; if (us) k = us + 0x88; }
+    // numpad (usage 0x54-0x63, 0x67)
+    else if (!strcmp(n, "kp0")) k = 0x62 + 0x88;   else if (!strcmp(n, "kp1")) k = 0x59 + 0x88;
+    else if (!strcmp(n, "kp2")) k = 0x5A + 0x88;   else if (!strcmp(n, "kp3")) k = 0x5B + 0x88;
+    else if (!strcmp(n, "kp4")) k = 0x5C + 0x88;   else if (!strcmp(n, "kp5")) k = 0x5D + 0x88;
+    else if (!strcmp(n, "kp6")) k = 0x5E + 0x88;   else if (!strcmp(n, "kp7")) k = 0x5F + 0x88;
+    else if (!strcmp(n, "kp8")) k = 0x60 + 0x88;   else if (!strcmp(n, "kp9")) k = 0x61 + 0x88;
+    else if (!strcmp(n, "kpdot")) k = 0x63 + 0x88; else if (!strcmp(n, "kpenter")) k = 0x58 + 0x88;
+    else if (!strcmp(n, "kpplus")) k = 0x57 + 0x88; else if (!strcmp(n, "kpminus")) k = 0x56 + 0x88;
+    else if (!strcmp(n, "kpstar")) k = 0x55 + 0x88; else if (!strcmp(n, "kpslash")) k = 0x54 + 0x88;
+    else if (!strcmp(n, "kpequal")) k = 0x67 + 0x88;
     if (k) { Keyboard.press(k); delay(20); Keyboard.releaseAll(); }
 }
 
@@ -402,5 +430,7 @@ void usbHidBegin() {
     USB.begin();
     Keyboard.begin();
     ConsumerControl.begin();
+    Mouse.begin();
+    SysControl.begin();
 }
 #endif // POC_HAS_USB_HID
