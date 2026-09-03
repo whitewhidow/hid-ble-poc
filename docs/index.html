@@ -173,6 +173,10 @@
       <span style="flex:1">Type speed — delay per character (ms), 0 = fastest; raise if chars are dropped</span>
       <input id="typedelay" type="number" min="0" max="100" step="1" style="flex:0 0 96px;text-align:right">
     </div>
+    <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0">
+      <input type="checkbox" id="splash" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0">
+      <span style="flex:1">Show boot splash (off = boot straight to the menu, faster)</span>
+    </label>
   </section>
 
   <section id="tab-help" hidden>
@@ -257,7 +261,7 @@ function waitFor(match, timeout=4000){
 // The board has a single command slot processed once per loop, so back-to-back
 // queries overwrite each other — space them out.
 async function refreshSettings(){
-  for (const c of ['__VER__','__AUTOGET__','__ABGET__','__OSGET__','__FDGET__','__TDGET__','__WIFIST__']) {
+  for (const c of ['__VER__','__AUTOGET__','__ABGET__','__OSGET__','__FDGET__','__TDGET__','__SPGET__','__WIFIST__']) {
     sendCmd(c); await new Promise(r => setTimeout(r, 200));
   }
 }
@@ -324,6 +328,7 @@ $('connect').onclick = async () => {
       if (v.startsWith('ota:'))  { renderOta(v);  return; }
       if (v.startsWith('autorun:')) { $('autorun').value = v.slice(8); return; }
       if (v.startsWith('armboot:')) { armOn = (v.slice(8) === '1'); updateArmSel(); return; }
+      if (v.startsWith('splash:'))  { $('splash').checked = (v.slice(7) === '1'); return; }
       if (v.startsWith('os:'))      { armOs = v.slice(3); updateArmSel(); return; }
       if (v.startsWith('firedelay:')) { $('firedelay').value = v.slice(10); return; }
       if (v.startsWith('typedelay:')) { $('typedelay').value = v.slice(10); return; }
@@ -478,6 +483,7 @@ $('armboot').onchange  = () => {
   else { armOs = v; sendCmd('__OSSET__:' + v); setTimeout(() => sendCmd('__ARMBOOT__:1'), 180); }
 };
 $('firedelay').onchange = () => { if (rxCh) sendCmd('__FDSET__:' + ($('firedelay').value || '0')); };
+$('splash').onchange = () => { if (rxCh) sendCmd('__SPSET__:' + ($('splash').checked ? '1' : '0')); };
 $('typedelay').onchange = () => { if (rxCh) sendCmd('__TDSET__:' + ($('typedelay').value || '5')); };
 $('wifiRefresh').onclick = () => sendCmd('__WIFIST__');
 $('wifiSave').onclick = async () => {
@@ -517,7 +523,7 @@ let libBuf = '';              // accumulates pldat: chunks
 const OSES = ['linux','windows','macos','custom'];
 const OSLBL = { linux:'Linux', windows:'Windows', macos:'Macos', custom:'Custom' };
 
-function refreshLib(){ if (!rxCh) return; sendCmd('__PLLIST__'); setTimeout(() => sendCmd('__PLSLOTS__'), 200); }
+function refreshLib(){ if (!rxCh) return; buildSlotRows(); sendCmd('__PLLIST__'); setTimeout(() => sendCmd('__PLSLOTS__'), 200); }
 
 function renderLib(csv){
   libNames = csv ? csv.split(',').filter(Boolean) : [];

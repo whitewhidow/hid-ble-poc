@@ -294,6 +294,17 @@ void bleSetArmBoot(bool on) {
     Preferences p; p.begin("poc", false); p.putBool("armboot", on); p.end();
 }
 
+// Show the graphical boot splash (NVS; default on). Disable to boot straight to the menu.
+static int8_t g_splash = -1;
+bool bleSplash() {
+    if (g_splash < 0) { Preferences p; p.begin("poc", true); g_splash = p.getBool("splash", true) ? 1 : 0; p.end(); }
+    return g_splash == 1;
+}
+void bleSetSplash(bool on) {
+    g_splash = on ? 1 : 0;
+    Preferences p; p.begin("poc", false); p.putBool("splash", on); p.end();
+}
+
 // Settle delay (ms) after a plug before AUTORUN fires — tune per host.
 static int32_t g_fireDelay = -1;
 int bleFireDelay() {
@@ -447,6 +458,11 @@ static void handleCmd(const char* cmd) {
     } else if (!strncmp(cmd, "__OSSET__:", 10)) {
         bleSetTargetOs(atoi(cmd + 10));
         char b[8]; snprintf(b, sizeof(b), "os:%d", bleTargetOs()); ctrlNotify(b);
+    } else if (!strcmp(cmd, "__SPGET__")) {
+        ctrlNotify(bleSplash() ? "splash:1" : "splash:0");
+    } else if (!strncmp(cmd, "__SPSET__:", 10)) {
+        bleSetSplash(cmd[10] == '1');
+        ctrlNotify(bleSplash() ? "splash:1" : "splash:0");
     } else if (!strcmp(cmd, "__ABGET__")) {
         ctrlNotify(bleArmBoot() ? "armboot:1" : "armboot:0");
     } else if (!strncmp(cmd, "__ARMBOOT__:", 12)) {

@@ -51,8 +51,8 @@
   #define UI_PAD      4      // left padding / marker x
   #define UI_TITLE_Y  3      // title baseline y
   #define UI_BODY_Y   22     // body start y (dispShow)
-  #define UI_MENU_Y0  20     // first menu row y
-  #define UI_MENU_DY  11     // menu row spacing
+  #define UI_MENU_Y0  18     // first menu row y (5 rows must clear the status bar)
+  #define UI_MENU_DY  9      // menu row spacing
   #define UI_MENU_LX  14     // menu label x (after the > marker)
   #define UI_BAR_TS   1      // status-bar text size
   #define UI_BAR_H    12     // status-bar reserved height
@@ -65,7 +65,7 @@
   #define UI_PAD      8
   #define UI_TITLE_Y  8
   #define UI_BODY_Y   48
-  #define UI_MENU_Y0  46
+  #define UI_MENU_Y0  32     // 6 rows (incl. Custom) must clear the status bar
   #define UI_MENU_DY  18
   #define UI_MENU_LX  26
   #define UI_BAR_TS   2

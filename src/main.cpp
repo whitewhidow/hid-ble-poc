@@ -32,19 +32,19 @@ static int      sel = 0;
 static uint32_t menuAt = 0;   // T-Embed: >0 = auto-return to the menu at this millis() after a send
 
 #if defined(POC_BOARD_TDONGLE)
-// T-Dongle is USB-powered (no battery), so deep sleep is pointless — drop it (also
-// keeps the menu to 4 rows so nothing falls under the status bar on the 80px screen).
-static const char* ITEMS[] = { "Autodetect", "Linux", "Windows", "Macos" };
-static const int   NITEMS = 4;
-#else
-static const char* ITEMS[] = { "Autodetect", "Linux", "Windows", "Macos", "Sleep" };
+// T-Dongle is USB-powered (no battery), so deep sleep is pointless — drop it.
+static const char* ITEMS[] = { "Autodetect", "Linux", "Windows", "Macos", "Custom" };
 static const int   NITEMS = 5;
+#else
+static const char* ITEMS[] = { "Autodetect", "Linux", "Windows", "Macos", "Custom", "Sleep" };
+static const int   NITEMS = 6;
 #endif
 static const int   OS_OF[] = { POC_OS_UNKNOWN, POC_OS_LINUX, POC_OS_WINDOWS, POC_OS_MACOS };
+#define CUSTOM_IDX 4    // "Custom" = the free-form slot (/custom.txt), both boards
 #if defined(POC_BOARD_TDONGLE)
 #define SLEEP_IDX (-1)  // no sleep item on the T-Dongle (USB-powered)
 #else
-#define SLEEP_IDX 4     // last menu item = deep sleep (wake with the button)
+#define SLEEP_IDX 5     // last menu item = deep sleep (wake with the button)
 #endif
 
 #ifdef POC_HAS_USB_HID
@@ -96,8 +96,17 @@ static void buildPairCmd(char* out, size_t n) {
 
 // Actually deliver the payload for the chosen menu item.
 static void fireOS(int menuIdx) {
-    int os = OS_OF[menuIdx];
 #ifdef POC_HAS_USB_HID
+    if (menuIdx == CUSTOM_IDX) {   // free-form custom slot (/custom.txt)
+        dispShow("Custom", "typing the custom\npayload...", 0xF7C948); statusBar();
+        bleHidNotify("usb: firing custom payload (board)");
+        String c; if (pocFsRead("custom", c)) usbRunScript(c.c_str());
+        bleHidNotify("usb: sent");
+        dispShow("SENT", "payload typed.\nclick = menu", 0x3FB950); statusBar();
+        menuAt = millis() + 4000;
+        return;
+    }
+    int os = OS_OF[menuIdx];
     if (menuIdx == 0) {   // Autodetect
         dispShow("DETECTING", "LED fingerprint...", 0xF7C948); statusBar();
         os = usbDetectOS();
@@ -111,6 +120,7 @@ static void fireOS(int menuIdx) {
     menuAt = millis() + 4000;   // auto-return to the menu after a few seconds
 #else
     // C5: no USB typing. Only the Linux helper exists; show it, else a note.
+    int os = (menuIdx >= 1 && menuIdx <= 3) ? OS_OF[menuIdx] : POC_OS_UNKNOWN;
     if (os == POC_OS_LINUX || menuIdx == 0) {
         char cmd[420]; buildPairCmd(cmd, sizeof(cmd));
         dispCmd("RUN ON PC (Linux):", cmd); statusBar();
@@ -164,11 +174,12 @@ void setup() {
 #ifdef POC_HAS_USB_HID
     armBoot = bleArmBoot();             // arming headless -> skip the splash, fire ASAP
 #endif
-    if (!armBoot) dispSplash(netVersion(), POC_BOARD_NAME);     // graphical boot splash
+    bool showSplash = !armBoot && bleSplash();   // also skippable via the portal option
+    if (showSplash) dispSplash(netVersion(), POC_BOARD_NAME);   // graphical boot splash
     usbHidBegin();
     bleHidBegin();
     netBegin();                         // reconnect WiFi if creds were saved (for OTA)
-    if (!armBoot) delay(1200);          // only linger on the splash if we showed it
+    if (showSplash) delay(2000);        // only linger on the splash if we showed it
 #ifdef POC_HAS_USB_HID
     if (bleArmBoot()) {                 // headless: auto-arm the configured OS, wait for a plug
         armedIdx = bleTargetOs(); sel = armedIdx; armed = true; wasMounted = false;
