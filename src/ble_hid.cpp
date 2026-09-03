@@ -5,6 +5,7 @@
 #include "ble_hid.h"
 #include "usb_hid.h"   // pocFsRead / pocFsWrite* — edit the payload files over BLE
 #include "netota.h"    // WiFi provisioning + in-app OTA self-update
+#include <WiFi.h>      // WiFi.status() for the transport indicators
 #include "display.h"   // OTA progress on the LCD
 #include <Arduino.h>
 #include <Preferences.h>   // persist the AUTORUN setting in NVS
@@ -481,7 +482,7 @@ static void handleCmd(const char* cmd) {
     } else if (!strcmp(cmd, "__STATUS__")) {
         // Live transport status: ble = a PC subscribed to our BLE-HID; usb = our
         // USB device is enumerated on a host (only meaningful on the S3 boards).
-        char b[24]; snprintf(b, sizeof(b), "st:ble=%d:usb=%d", g_hidReady ? 1 : 0, usbHidMounted() ? 1 : 0);
+        char b[36]; snprintf(b, sizeof(b), "st:ble=%d:usb=%d:wifi=%d", g_hidReady ? 1 : 0, usbHidMounted() ? 1 : 0, (WiFi.status() == WL_CONNECTED) ? 1 : 0);
         ctrlNotify(b);
     } else if (!strncmp(cmd, "__BLETYPE__:", 12)) {
         bleHidType(cmd + 12);   // literal keystrokes over BLE-HID (Enter='\n', Tab='\t')
@@ -605,12 +606,12 @@ void bleHidTick() {
 
     // Push live transport status to the phone/web whenever it changes, so the portal
     // dots update without polling (only while a phone is actually on the control svc).
-    static int8_t lastBle = -1, lastUsb = -1;
+    static int8_t lastBle = -1, lastUsb = -1, lastWifi = -1;
     if (g_ctrlReady) {
-        int8_t b = g_hidReady ? 1 : 0, u = usbHidMounted() ? 1 : 0;
-        if (b != lastBle || u != lastUsb) {
-            lastBle = b; lastUsb = u;
-            char s[24]; snprintf(s, sizeof(s), "st:ble=%d:usb=%d", b, u); ctrlNotify(s);
+        int8_t b = g_hidReady ? 1 : 0, u = usbHidMounted() ? 1 : 0, w = (WiFi.status() == WL_CONNECTED) ? 1 : 0;
+        if (b != lastBle || u != lastUsb || w != lastWifi) {
+            lastBle = b; lastUsb = u; lastWifi = w;
+            char s[36]; snprintf(s, sizeof(s), "st:ble=%d:usb=%d:wifi=%d", b, u, w); ctrlNotify(s);
         }
-    } else { lastBle = lastUsb = -1; }
+    } else { lastBle = lastUsb = lastWifi = -1; }
 }

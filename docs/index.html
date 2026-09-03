@@ -48,9 +48,10 @@
 <div id="stat"></div>
 <div id="hdr" hidden style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:10px;padding:9px 12px;background:#161b22;border:1px solid #30363d;border-radius:10px;font-size:13px">
   <span id="hdrConn" style="font-weight:600;color:#3fb950">● connected</span>
-  <span style="color:#8b949e">fw <b id="hdrver" style="color:#adbac7">—</b></span>
-  <span style="margin-left:auto;color:#8b949e">BLE-HID <b id="stBle" style="color:#8b949e">○</b></span>
-  <span style="color:#8b949e">USB <b id="stUsb" style="color:#8b949e">○</b></span>
+  <span><b id="hdrver" style="color:#adbac7">—</b></span>
+  <span id="stWifi" style="margin-left:auto;color:#8b949e;font-weight:600">WIFI</span>
+  <span id="stBle"  style="color:#8b949e;font-weight:600">BLE-HID</span>
+  <span id="stUsb"  style="color:#8b949e;font-weight:600">USB-HID</span>
 </div>
 
 <div id="app" hidden>
@@ -332,7 +333,7 @@ $('connect').onclick = async () => {
       if (v.startsWith('os:'))      { armOs = v.slice(3); updateArmSel(); return; }
       if (v.startsWith('firedelay:')) { $('firedelay').value = v.slice(10); return; }
       if (v.startsWith('typedelay:')) { $('typedelay').value = v.slice(10); return; }
-      if (v.startsWith('ver:'))       { const vv = 'v' + v.slice(4); $('fwver').textContent = vv; $('hdrver').textContent = vv; return; }
+      if (v.startsWith('ver:'))       { const vv = 'v' + v.slice(4); $('fwver').textContent = vv; $('hdrver').textContent = vv; applyVerColor(); return; }
       if (v.startsWith('mac:'))       { $('bmac').textContent = v.slice(4); return; }
       if (v.startsWith('st:'))        { renderStatus(v); return; }
       if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
@@ -342,7 +343,8 @@ $('connect').onclick = async () => {
     $('connect').hidden = true; $('app').hidden = false;
     sendCmd('__BONDS__');                                   // list now
     setTimeout(() => sendCmd('__MAC__'), 150);              // board BLE MAC
-    setTimeout(() => sendCmd('__STATUS__'), 300);           // USB / BLE-HID transport dots
+    setTimeout(() => sendCmd('__STATUS__'), 300);           // WIFI / BLE-HID / USB-HID transport status
+    checkLatest();                                          // fetch latest release (phone net) to colour the version
     setTimeout(refreshSettings, 500);                       // then settings incl. fw (spaced; avoids clobbering the trio)
     refreshTimer = setInterval(() => { if (!busy) sendCmd('__BONDS__'); }, 3000);   // auto-refresh (paused during file ops)
   } catch (e) { $('stat').textContent = '✖ ' + e.message; }
@@ -369,11 +371,13 @@ for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
   if (t.dataset.tab === 'payloads') refreshLib();
 };
 
-// ---- transport status dots (st:ble=1:usb=0) ------------------------------
+// ---- transport status (st:ble=1:usb=0:wifi=0) — colour the labels ---------
 function renderStatus(v){
-  const m = /ble=(\d).*usb=(\d)/.exec(v); if (!m) return;
-  const set = (id, on) => { const e = $(id); if (!e) return; e.textContent = on ? '●' : '○'; e.style.color = on ? '#3fb950' : '#8b949e'; };
-  set('stBle', m[1] === '1'); set('stUsb', m[2] === '1');
+  const set = (id, on) => { const e = $(id); if (e) e.style.color = on ? '#3fb950' : '#8b949e'; };
+  let m;
+  if ((m = /ble=(\d)/.exec(v)))  set('stBle',  m[1] === '1');
+  if ((m = /usb=(\d)/.exec(v)))  set('stUsb',  m[1] === '1');
+  if ((m = /wifi=(\d)/.exec(v))) set('stWifi', m[1] === '1');
 }
 
 // ---- arm-at-boot dropdown ("Manual arm" + a target OS) -------------------
@@ -448,7 +452,17 @@ for (const b of document.querySelectorAll('.fire')) b.onclick = () => {
 };
 updateFireBtns();
 
-let latestVer = '';
+let latestVer = '';   // '' = not checked yet · null = check failed (phone offline) · else the version
+// Colour the header version: grey until known, orange if we couldn't reach GitHub,
+// green if it matches the latest release, red if the board is outdated.
+function applyVerColor(){
+  const e = $('hdrver'); if (!e) return;
+  const cur = (e.textContent || '').replace(/^v/, '');
+  if (!cur || cur === '—') { e.style.color = '#adbac7'; return; }
+  if (latestVer === null)  { e.style.color = '#f7c948'; return; }   // couldn't check
+  if (!latestVer)          { e.style.color = '#adbac7'; return; }   // not checked yet
+  e.style.color = (latestVer === cur) ? '#3fb950' : '#e5484d';       // up to date / outdated
+}
 async function checkLatest(){
   try {
     const r = await fetch('https://api.github.com/repos/whitewhidow/hid-ble-poc/releases/latest', { cache: 'no-store' });
@@ -457,7 +471,8 @@ async function checkLatest(){
     $('fwlatest').textContent = latestVer ? ('v' + latestVer) : 'unknown';
     const cur = ($('fwver').textContent || '').replace(/^v/, '');
     $('fwnew').textContent = (latestVer && cur && cur !== '—' && latestVer !== cur) ? '  ⬆ update available' : '';
-  } catch (e) { $('fwlatest').textContent = 'check failed'; }
+  } catch (e) { latestVer = null; $('fwlatest').textContent = 'check failed'; }
+  applyVerColor();
 }
 
 // ---- WiFi / OTA ----------------------------------------------------------
