@@ -6,6 +6,7 @@
 #include "usb_hid.h"   // pocFsRead / pocFsWrite* — edit the payload files over BLE
 #include "consumer_keys.h"   // media/consumer usage table (shared with USB)
 #include "netota.h"    // WiFi provisioning + in-app OTA self-update
+#include "version.h"   // POC_OTA_URL / POC_OTHER_FW_URL (firmware switch)
 #include <WiFi.h>      // WiFi.status() for the transport indicators
 #include "display.h"   // OTA progress on the LCD
 #include <Arduino.h>
@@ -525,8 +526,14 @@ static void handleCmd(const char* cmd) {
         strncpy(g_otaVer, cmd + 11, sizeof(g_otaVer) - 1); g_otaVer[sizeof(g_otaVer) - 1] = 0;
     } else if (!strcmp(cmd, "__OTA__")) {
         ctrlNotify("ota:0 starting");
-        String r = netOtaUpdate(otaProgress);
+        String r = netOtaUpdate(otaProgress, POC_OTA_URL);
         if (r == "ok") { ctrlNotify("ota:100 rebooting"); delay(500); ESP.restart(); }
+        else ctrlNotify((String("ota:err ") + r).c_str());
+    } else if (!strcmp(cmd, "__OTASWITCH__")) {
+        // Flash the SIBLING firmware (BBoink) into the spare slot + boot into it.
+        ctrlNotify("ota:0 fetching " POC_OTHER_FW_NAME);
+        String r = netOtaUpdate(otaProgress, POC_OTHER_FW_URL);
+        if (r == "ok") { ctrlNotify("ota:100 booting " POC_OTHER_FW_NAME); delay(500); ESP.restart(); }
         else ctrlNotify((String("ota:err ") + r).c_str());
     } else if (!strcmp(cmd, "__AUTOGET__")) {
         ctrlNotify(bleAutorun() ? "autorun:1" : "autorun:0");

@@ -49,7 +49,7 @@ String netStatus() {
     return String("wifi:") + (s_ssid.length() ? s_ssid : String("-")) + "|" + st + "|" + ip + "|" + POC_VERSION;
 }
 
-String netOtaUpdate(void (*cb)(int, const char*)) {
+String netOtaUpdate(void (*cb)(int, const char*), const char* url) {
     if (WiFi.status() != WL_CONNECTED) { if (cb) cb(0, "wifi not connected"); return "err:wifi"; }
     if (cb) cb(0, "connecting to github");
 
@@ -57,7 +57,7 @@ String netOtaUpdate(void (*cb)(int, const char*)) {
     HTTPClient http;
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);   // release asset 302s to a CDN
     http.setTimeout(15000);
-    if (!http.begin(client, POC_OTA_URL)) { if (cb) cb(0, "http begin fail"); return "err:begin"; }
+    if (!http.begin(client, url)) { if (cb) cb(0, "http begin fail"); return "err:begin"; }
 
     int code = http.GET();
     if (code != HTTP_CODE_OK) { char e[24]; snprintf(e, sizeof(e), "http %d", code); if (cb) cb(0, e); http.end(); return "err:http"; }
@@ -85,5 +85,5 @@ void   netConnect() {}
 void   netSetCreds(const String&, const String&) {}
 void   netClearCreds() {}
 String netStatus() { return String("wifi:unsupported|-|-|") + POC_VERSION; }
-String netOtaUpdate(void (*cb)(int, const char*)) { if (cb) cb(0, "OTA not on this board"); return "err:unsupported"; }
+String netOtaUpdate(void (*cb)(int, const char*), const char*) { if (cb) cb(0, "OTA not on this board"); return "err:unsupported"; }
 #endif

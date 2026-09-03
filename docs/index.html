@@ -202,6 +202,13 @@
       <button id="otaRun" class="warn">Update firmware</button>
     </div>
     <div class="sub" style="margin:4px 0 0">It downloads the newest release, writes the spare slot, and reboots into it. Keep it powered — don't unplug during the update.</div>
+
+    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Switch firmware</div>
+    <div class="row">
+      <span class="sub" style="flex:1;margin:0">Flash <b>BBoink</b> into the spare slot and boot into it (16 MB boards).</span>
+      <button id="otaSwitch" class="warn">Switch to BBoink</button>
+    </div>
+    <div class="sub" style="margin:4px 0 0">Same as an update, but pulls the sibling firmware. Whatever you boot becomes the default (persists across replugs). Come back the same way from BBoink's own Switch button.</div>
   </section>
 
   <section id="tab-options" hidden>
@@ -658,6 +665,12 @@ $('otaRun').onclick = async () => {
     if (latestVer) { await sendCmd('__OTAVER__:' + latestVer); await new Promise(r => setTimeout(r, 250)); }  // old fw ignores this
     await sendCmd('__OTA__');   // plain form — every firmware version understands it
   } catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaRun').disabled = false; }
+};
+if ($('otaSwitch')) $('otaSwitch').onclick = async () => {
+  if (!rxCh || busy || !confirm('Flash BBoink into the spare slot and boot into it? Needs WiFi. Keep the board powered.')) return;
+  busy = true; $('otaSwitch').disabled = true; $('otaStat').textContent = 'fetching BBoink…';
+  try { await sendCmd('__OTASWITCH__'); }
+  catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaSwitch').disabled = false; }
 };
 $('list').onclick = () => sendCmd('__BONDS__');
 $('drop').onclick = async () => { if (confirm('Disconnect all current BLE links?')) await sendCmd('__DROP__'); };

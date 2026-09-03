@@ -15,3 +15,16 @@
 #define POC_OTA_URL \
     "https://github.com/whitewhidow/hid-ble-poc/releases/latest/download/hid-ble-poc-app-tembed.bin"
 #endif
+
+// "Switch firmware" target — the sibling project's (BBoink) app bin for THIS same
+// physical board. Same ota_0/ota_1 slot layout, so it boots from the spare OTA
+// slot via the normal updater; whichever you boot becomes the A/B default (so a
+// plugged-in board keeps running it across replugs). Both 16MB boards support it.
+#define POC_OTHER_FW_NAME "BBoink"
+#if defined(POC_BOARD_TDONGLE)
+#define POC_OTHER_FW_URL \
+    "https://github.com/whitewhidow/bboink/releases/latest/download/bboink-app-tdongle-s3.bin"
+#else
+#define POC_OTHER_FW_URL \
+    "https://github.com/whitewhidow/bboink/releases/latest/download/bboink-app-t-embed-cc1101.bin"
+#endif

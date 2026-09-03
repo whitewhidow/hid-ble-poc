@@ -14,4 +14,4 @@ const char* netVersion();
 
 // Run OTA now (blocking, ~seconds). cb(pct,msg) reports progress/errors; returns
 // "ok" on success (caller reboots) or "err:<what>".
-String      netOtaUpdate(void (*cb)(int pct, const char* msg));
+String      netOtaUpdate(void (*cb)(int pct, const char* msg), const char* url);  // OTA a specific app bin
