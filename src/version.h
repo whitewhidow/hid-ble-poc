@@ -11,7 +11,7 @@
 #  endif
 #endif
 
-#define POC_VERSION "0.1.24"
+#define POC_VERSION "0.1.25"
 
 // App-only image (firmware.bin) published by CI on a tag. The in-app updater
 // downloads this over WiFi and writes it to the spare OTA slot. Each board pulls

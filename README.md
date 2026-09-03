@@ -98,10 +98,19 @@ holds native USB, so enter the bootloader by hand:
 
 The firmware can update itself over WiFi (A/B OTA partitions):
 
-1. In the phone's **Update** tab, save your **WiFi** SSID + password (stored in
-   NVS; the board reconnects on boot).
-2. Tap **Update firmware** — the board downloads the latest release, writes the
-   spare OTA slot, and reboots into it (progress on phone + LCD).
+1. In the phone's **WiFi** tab, save your **WiFi** SSID + password (stored in NVS).
+   WiFi only needs to be *configured* — it's never brought up live over the portal
+   (WiFi + BLE at once churns the radio); the board connects it itself at the
+   reboot.
+2. In the **Update** tab, tap **Update firmware** — the board flags a fetch and
+   reboots; at a clean heap it connects WiFi, writes the spare OTA slot, and boots
+   the new image (progress on the LCD).
+
+**Switch firmware:** a hidden action (tap the title 3×) flashes the *sibling*
+project's app — [BBoink](https://github.com/whitewhidow/bboink) — into the spare
+slot and boots into it (same OTA machinery, byte-compatible slots). Switch back
+from BBoink's own portal. Each firmware advertises a distinct BLE address so the
+host's GATT cache doesn't collide across a switch.
 
 Releases are cut by tagging: bump `POC_VERSION` in `src/version.h`, then
 `git tag vX.Y.Z && git push --tags`. CI (`release.yml`) builds each board and
