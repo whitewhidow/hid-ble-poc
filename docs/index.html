@@ -625,10 +625,11 @@ async function loadSlot(os, name){
   try {
     await sendCmd('__PLLOAD__:' + name + ':' + os);
     const r = await waitFor(v => v.startsWith('plload:'));
-    plStat(r === 'plload:ok' ? '✔ ' + os + ' slot ← ' + name : '✖ ' + r);
+    if (r === 'plload:ok') { slotMap[os] = name; buildSlotRows(); plStat('✔ ' + os + ' slot ← ' + name); }  // reflect immediately
+    else plStat('✖ ' + r);
   } catch(e){ plStat('✖ ' + e.message); }
   finally { busy=false; }
-  setTimeout(() => sendCmd('__PLSLOTS__'), 200);
+  setTimeout(() => sendCmd('__PLSLOTS__'), 300);   // then reconcile with the board
 }
 $('pllist').onchange = () => { const n = $('pllist').value; if (n) loadLib(n); };
 $('plnew').onclick = newLib;
