@@ -205,7 +205,7 @@
 
     <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Switch firmware</div>
     <div class="row">
-      <span class="sub" style="flex:1;margin:0">Flash <b>BBoink</b> into the spare slot and boot into it (16 MB boards).</span>
+      <span class="sub" style="flex:1;margin:0">Reboots and flashes <b>BBoink</b> into the spare slot, then boots into it — <b>watch the board screen</b> for progress (16 MB boards).</span>
       <button id="otaSwitch" class="warn">Switch to BBoink</button>
     </div>
     <div class="sub" style="margin:4px 0 0">Same as an update, but pulls the sibling firmware. Whatever you boot becomes the default (persists across replugs). Come back the same way from BBoink's own Switch button.</div>
@@ -667,8 +667,8 @@ $('otaRun').onclick = async () => {
   } catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaRun').disabled = false; }
 };
 if ($('otaSwitch')) $('otaSwitch').onclick = async () => {
-  if (!rxCh || busy || !confirm('Flash BBoink into the spare slot and boot into it? Needs WiFi. Keep the board powered.')) return;
-  busy = true; $('otaSwitch').disabled = true; $('otaStat').textContent = 'fetching BBoink…';
+  if (!rxCh || busy || !confirm('Reboot and flash BBoink into the spare slot, then boot into it? Needs saved WiFi. The board will disconnect — watch its screen for progress. Keep it powered.')) return;
+  busy = true; $('otaSwitch').disabled = true; $('otaStat').textContent = 'rebooting to switch — watch the board screen…';
   try { await sendCmd('__OTASWITCH__'); }
   catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaSwitch').disabled = false; }
 };

@@ -11,6 +11,8 @@
 #include "ble_hid.h"
 #include "display.h"
 #include "netota.h"
+#include "version.h"
+#include <WiFi.h>
 #include <Wire.h>
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
@@ -159,6 +161,18 @@ static void selectOS(int menuIdx) {
     fireOS(menuIdx);
 }
 
+// ---- firmware switch (reboot-to-switch, shared approach with BBoink) ----------
+// The portal sets this flag + reboots; at clean heap (no BLE/USB/WiFi contention)
+// we connect WiFi, flash the SIBLING firmware into the spare OTA slot, and reboot
+// into it. Progress shows on the LCD.
+#define POC_SWITCH_MAGIC 0x5757C0DEu
+RTC_NOINIT_ATTR uint32_t bootSwitchFw;
+static void switchProgress(int pct, const char* msg) {
+    char b[48]; snprintf(b, sizeof(b), "%s\n%d%%", msg, pct);
+    dispCenter("SWITCH", b, 0xF7C948);
+}
+void pocRequestFwSwitch() { bootSwitchFw = POC_SWITCH_MAGIC; delay(200); ESP.restart(); }
+
 void setup() {
     pinMode(BTN, INPUT_PULLUP);
 #if defined(POC_BOARD_TEMBED)
@@ -170,6 +184,19 @@ void setup() {
 #endif
     Serial.begin(115200);
     dispBegin();
+
+    // Firmware switch requested by the portal: do it now, before BLE/USB/WiFi come
+    // up, so the flash runs at a clean heap with WiFi alone (safe on no-PSRAM).
+    if (bootSwitchFw == POC_SWITCH_MAGIC) {
+        bootSwitchFw = 0;
+        dispCenter("SWITCH", "\nfetching\n" POC_OTHER_FW_NAME, 0x22D3E0);
+        netBegin(); netConnect();
+        uint32_t t0 = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - t0 < 20000) delay(200);
+        String r = netOtaUpdate(switchProgress, POC_OTHER_FW_URL);
+        if (r == "ok") { dispCenter("SWITCH", "\nbooting\n" POC_OTHER_FW_NAME, 0x3FB950); delay(600); ESP.restart(); }
+        dispCenter("SWITCH FAIL", r.c_str(), 0xE5484D); delay(2500);   // fall through to normal boot
+    }
     bool armBoot = false;
 #ifdef POC_HAS_USB_HID
     armBoot = bleArmBoot();             // arming headless -> skip the splash, fire ASAP

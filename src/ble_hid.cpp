@@ -12,6 +12,8 @@
 #include <Arduino.h>
 #include <Preferences.h>   // persist the AUTORUN setting in NVS
 #include <NimBLEDevice.h>
+
+extern void pocRequestFwSwitch();   // main.cpp: flag a firmware switch + reboot
 #include <NimBLEHIDDevice.h>
 
 // Custom control service (the phone connects here; Web Bluetooth can't touch HID).
@@ -530,11 +532,11 @@ static void handleCmd(const char* cmd) {
         if (r == "ok") { ctrlNotify("ota:100 rebooting"); delay(500); ESP.restart(); }
         else ctrlNotify((String("ota:err ") + r).c_str());
     } else if (!strcmp(cmd, "__OTASWITCH__")) {
-        // Flash the SIBLING firmware (BBoink) into the spare slot + boot into it.
-        ctrlNotify("ota:0 fetching " POC_OTHER_FW_NAME);
-        String r = netOtaUpdate(otaProgress, POC_OTHER_FW_URL);
-        if (r == "ok") { ctrlNotify("ota:100 booting " POC_OTHER_FW_NAME); delay(500); ESP.restart(); }
-        else ctrlNotify((String("ota:err ") + r).c_str());
+        // Reboot-to-switch (shared approach with BBoink): flag it and reboot; the
+        // boot hook flashes the SIBLING firmware at a clean heap + boots into it.
+        ctrlNotify("ota:0 switching to " POC_OTHER_FW_NAME);
+        delay(400);
+        pocRequestFwSwitch();           // sets the RTC flag + restarts (never returns)
     } else if (!strcmp(cmd, "__AUTOGET__")) {
         ctrlNotify(bleAutorun() ? "autorun:1" : "autorun:0");
     } else if (!strncmp(cmd, "__AUTORUN__:", 12)) {
