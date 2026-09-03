@@ -25,33 +25,42 @@ flags and sharing one firmware:
 ## What it does
 
 - **Start menu** (single button — click = next, hold = select): **Autodetect**
-  (LED-fingerprint the host OS over USB), **Linux / Windows / macOS** (force one),
-  and **Sleep** (deep sleep; a button tap wakes it and boots fresh — **T-Embed only**;
-  the USB-powered T-Dongle omits it, so its menu is Autodetect / Linux / Windows / macOS).
-- **Payloads** live on LittleFS as `data/<os>.txt` (tiny `GUI/STRING/ENTER/DELAY/
-  CTRLALT` format) and are typed over USB when you fire an OS.
-- **Boot splash** shows the firmware version + board; the **status bar** shows the
-  PC/PH/USB links, the connection count, and a **battery gauge** (T-Embed only).
-- **AUTORUN** (arm on select, then auto-fire the payload the moment it's plugged
-  into a host) is a **runtime setting** stored in NVS — toggle it from the phone,
-  no reflash.
+  (LED-fingerprint the host OS over USB), **Linux / Windows / macOS**, and a
+  free-form **Custom** slot — plus **Sleep** on the T-Embed (deep sleep; a button
+  tap wakes it and boots fresh; the USB-powered T-Dongle omits Sleep). Firing types
+  that slot's payload over USB.
+- **Payload library** (managed from the phone): keep any number of **named**
+  payloads on LittleFS and **load** one into each OS **slot** (linux/windows/macos/
+  custom) — the slot is what the board fires. Payload syntax is the Evil Crow "Wind"
+  set (`Print`/`STRING`/`ENTER`/`Delay`/`Gui*`/`RunWin`/…; `#`/`REM` comments).
+- **On-screen keyboard + live typing** from the phone, over **BLE-HID or USB**
+  (see the control page below).
+- **Graphical boot splash** (version + board; skippable in Options, and auto-skipped
+  when arming at boot). The **status bar** shows PC/PH/USB links, AUTORUN (`A`/`M`),
+  arm-at-boot (`AB` + the target-OS letter when on), and a **battery gauge** (T-Embed).
+- **AUTORUN** (arm on select → auto-fire on plug) and **arm-at-boot** (headless) are
+  runtime NVS settings, set from the phone — no reflash.
 
 ## Phone control page — `docs/index.html`
 
 A Web Bluetooth page (Chrome/Edge, https/localhost), served from GitHub Pages.
-Connect to `PoC-KBD`, then use the tabs:
+Connect to `PoC-KBD`; a unified header shows the connection, firmware version, and
+**BLE-HID / USB** status. Tabs:
 
-- **Type** — send text to the paired PC over BLE-HID. Each line can be a command
-  in the **Evil Crow Cable "Wind"** syntax (`Print`/`PrintLine`/`Press`/`Delay`/
-  `Gui*`/`RunWin`/`RunNix`/…); plain lines are typed literally. Full list in the
-  **Commands** tab. (Network `Shell*`/`ServerConnect` and `DetectOS` are recognised
-  but skipped — no TCP/LED path over BLE.)
-- **Payloads** — load/edit the per-OS payload files and save them straight to the
-  board's filesystem (no reflash).
+- **Keyboard** — an on-screen **QWERTY** (Shift latches; Ctrl/Alt/⊞ chord the next
+  letter; Backspace/Enter/Tab/Esc/arrows/Ctrl-Alt-Del) plus a **script/text box**
+  (Evil Crow "Wind" syntax; plain lines typed literally). A **BLE-HID ⇄ USB**
+  dropdown routes every key **and** the script to the BLE-paired PC or the
+  USB-plugged PC.
+- **Payloads** — the payload **library**: add / edit / delete named payloads, then
+  **Load** one into each OS slot. **Fire** any slot (Linux/Windows/macOS/Custom)
+  over BLE **or** USB, plus **Autodetect + Run** (USB-only fingerprint → run).
 - **Devices** — list / forget the board's BLE bonds; drop all links.
-- **Update** — give the board WiFi and let it self-update over the air (see below);
-  also the AUTORUN toggle.
-- **Commands** — the full keystroke-command reference.
+- **WiFi / Update** — provision WiFi and self-update over the air (see below).
+- **Options** — AUTORUN (Run/Arm), arm-at-boot (Manual arm + target OS), fire /
+  type delays, and the boot-splash toggle.
+- **Commands** — the full keystroke-command reference. (Network `Shell*`/
+  `ServerConnect` and `DetectOS` are recognised but skipped — no TCP/LED path over BLE.)
 
 ## Build / flash
 
