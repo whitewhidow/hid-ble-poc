@@ -200,12 +200,14 @@
     </div>
     <div class="sub" style="margin:4px 0 0">It downloads the newest release, writes the spare slot, and reboots into it. Keep it powered — don't unplug during the update.</div>
 
-    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Switch firmware</div>
-    <div class="row">
-      <span class="sub" style="flex:1;margin:0">Reboots and flashes <b>BBoink</b> into the spare slot, then boots into it — <b>watch the board screen</b> for progress (16 MB boards).</span>
-      <button id="otaSwitch" class="warn">Switch to BBoink</button>
+    <div id="switchSection" hidden>
+      <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Switch firmware</div>
+      <div class="row">
+        <span class="sub" style="flex:1;margin:0">Reboots and flashes <b>BBoink</b> into the spare slot, then boots into it — <b>watch the board screen</b> for progress (16 MB boards).</span>
+        <button id="otaSwitch" class="warn">Switch to BBoink</button>
+      </div>
+      <div class="sub" style="margin:4px 0 0">Same as an update, but pulls the sibling firmware. Whatever you boot becomes the default (persists across replugs). Come back the same way from BBoink's own Switch button.</div>
     </div>
-    <div class="sub" style="margin:4px 0 0">Same as an update, but pulls the sibling firmware. Whatever you boot becomes the default (persists across replugs). Come back the same way from BBoink's own Switch button.</div>
   </section>
 
   <section id="tab-options" hidden>
@@ -435,6 +437,15 @@ for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
   if (t.dataset.tab === 'update') checkLatest();
   if (t.dataset.tab === 'payloads') refreshLib();
 };
+
+// Hidden "developer" unlock: tap the title 3x (quickly) to reveal the firmware-
+// switch action in the Update tab. Kept out of sight for normal users.
+(() => { let n = 0, t0 = 0; const h = document.querySelector('h1');
+  if (h) { h.style.cursor = 'pointer'; h.onclick = () => { const now = Date.now();
+    n = (now - t0 < 1500) ? n + 1 : 1; t0 = now;
+    if (n >= 3) { const s = $('switchSection'); if (s) s.hidden = false; n = 0; }
+  }; }
+})();
 
 // ---- transport status (st:ble=1:usb=0:wifi=0) — colour the labels ---------
 function renderStatus(v){

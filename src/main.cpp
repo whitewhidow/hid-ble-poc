@@ -179,8 +179,10 @@ static void fwScreen(const char* phase, uint32_t color) {
     char b[64]; snprintf(b, sizeof(b), "%s\n\n%s", phase, g_fwTarget);
     dispCenter("FIRMWARE", b, color);
 }
-static void switchProgress(int pct, const char* /*msg*/) {
-    char p[8]; snprintf(p, sizeof(p), "%d%%", pct); fwScreen(p, 0xF7C948);
+static void switchProgress(int pct, const char* msg) {
+    static int last = -1;                       // throttle: redraw only on change
+    if (pct == last && pct != 0 && pct != 100) return; last = pct;
+    fwScreen(msg, 0xF7C948);                     // msg carries the step ("connecting to github" / "writing NN%")
 }
 // Called from the BLE control service: request a fetch on the next boot.
 void pocRequestFwFetch(bool self) { bootFwFetch = self ? POC_FETCH_SELF : POC_FETCH_SWITCH; delay(200); ESP.restart(); }
