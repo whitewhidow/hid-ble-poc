@@ -104,7 +104,9 @@ static void fireOS(int menuIdx) {
     }
     char h[40]; snprintf(h, sizeof(h), "%s", (menuIdx == 0) ? usbOsName(os) : ITEMS[menuIdx]);
     dispShow(h, "typing the pairing\npayload...", 0xF7C948); statusBar();
+    { char nb[56]; snprintf(nb, sizeof(nb), "usb: firing %s payload (board)", h); bleHidNotify(nb); }
     usbSamplePayload(os);
+    bleHidNotify("usb: sent");
     dispShow("SENT", "payload typed.\nclick = menu", 0x3FB950); statusBar();
     menuAt = millis() + 4000;   // auto-return to the menu after a few seconds
 #else

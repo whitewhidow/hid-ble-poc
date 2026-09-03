@@ -10,6 +10,7 @@ bool pocFsRead(const char*, String&)        { return false; }
 bool pocFsWriteBegin(const char*)           { return false; }
 bool pocFsWriteChunk(const uint8_t*, size_t){ return false; }
 bool pocFsWriteEnd(size_t&)                 { return false; }
+bool usbHidMounted()                        { return false; }   // no USB device role here
 
 #else
 // ---- S3 / real USB HID: OS detection + LittleFS payload interpreter -----------
@@ -193,6 +194,11 @@ static void usbRunPayloadContent(const String& content) {
         else usbHidType(subMac(line).c_str());   // fallback: type the line literally
     }
 }
+
+// USB enumerated AND not suspended = a host is really there to receive keystrokes.
+extern "C" bool tud_mounted(void);
+extern "C" bool tud_suspended(void);
+bool usbHidMounted() { return tud_mounted() && !tud_suspended(); }
 
 void usbSamplePayload(int os) {
     String content;

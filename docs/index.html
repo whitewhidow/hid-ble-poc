@@ -45,6 +45,7 @@
 <div id="app" hidden>
   <div class="tabs">
     <button class="tab active" data-tab="type">Type</button>
+    <button class="tab" data-tab="keyboard">Keyboard</button>
     <button class="tab" data-tab="payloads">Payloads</button>
     <button class="tab" data-tab="devices">Devices</button>
     <button class="tab" data-tab="wifi">WiFi</button>
@@ -53,10 +54,33 @@
     <button class="tab" data-tab="help">Commands</button>
   </div>
 
+  <div id="statusbar" style="display:flex;gap:16px;margin:2px 0 12px;font-family:ui-monospace,monospace;font-size:12.5px;color:#8a97a2">
+    <span>BLE-HID (PC) <b id="stBle" style="color:#8b949e">○</b></span>
+    <span>USB (PC) <b id="stUsb" style="color:#8b949e">○</b></span>
+  </div>
+
   <section id="tab-type">
     <textarea id="text" rows="5" placeholder="text to type on the PC">hello from my phone</textarea>
     <div class="row"><button id="send" style="flex:1">Send</button></div>
     <div class="sub" style="margin:0">Runs over BLE-HID on the paired PC. Plain text is typed as-is; each line can also be an Evil Crow command — e.g. <code>GuiR</code>, <code>Delay 500</code>, <code>PrintLine whoami</code>, <code>RunWin notepad</code>, <code>Press KEY_ENTER</code>, <code>CtrlAltT</code>. Ctrl/⌘+Enter sends.</div>
+  </section>
+
+  <section id="tab-keyboard" hidden>
+    <div class="sub" style="margin:0 0 8px">Live keyboard over BLE-HID — whatever you type in the box goes to the paired PC as you type. Use the keys below for Enter / Tab / navigation. Needs a PC subscribed to the BLE keyboard (see BLE-HID status above).</div>
+    <textarea id="kbcap" rows="3" placeholder="tap here and type — keystrokes go to the PC live" style="font:14px/1.5 ui-monospace,monospace"></textarea>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
+      <button class="sec kbk" data-k="enter">⏎ Enter</button>
+      <button class="sec kbk" data-k="tab">⇥ Tab</button>
+      <button class="sec kbk" data-k="bksp">⌫ Bksp</button>
+      <button class="sec kbk" data-k="esc">Esc</button>
+      <button class="sec kbk" data-k="del">Del</button>
+      <button class="sec kbk" data-k="up">↑</button>
+      <button class="sec kbk" data-k="down">↓</button>
+      <button class="sec kbk" data-k="left">←</button>
+      <button class="sec kbk" data-k="right">→</button>
+      <button class="sec kbk" data-k="gui">⊞ Win</button>
+      <button class="warn kbk" data-k="cad">Ctrl+Alt+Del</button>
+    </div>
   </section>
 
   <section id="tab-payloads" hidden>
@@ -71,6 +95,12 @@
     <div class="row">
       <span id="plstat" class="sub" style="flex:1;margin:0"></span>
       <button id="plsave" disabled>Save to board</button>
+    </div>
+    <div class="sub" style="margin:12px 0 4px">⚡ Fire the saved payload out of the board's <b>USB</b> into the plugged-in PC (T-Embed only; the board must be plugged into that PC over USB):</div>
+    <div class="row" id="usbrow">
+      <button class="sec usbfire" data-os="linux" style="flex:1">Linux</button>
+      <button class="sec usbfire" data-os="windows" style="flex:1">Windows</button>
+      <button class="sec usbfire" data-os="macos" style="flex:1">Macos</button>
     </div>
   </section>
 
@@ -286,12 +316,14 @@ $('connect').onclick = async () => {
       if (v.startsWith('typedelay:')) { $('typedelay').value = v.slice(10); return; }
       if (v.startsWith('ver:'))       { const vv = 'v' + v.slice(4); $('fwver').textContent = vv; $('hdrver').textContent = vv; return; }
       if (v.startsWith('mac:'))       { $('bmac').textContent = v.slice(4); return; }
+      if (v.startsWith('st:'))        { renderStatus(v); return; }
       if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
     });
     $('stat').textContent = '✔ connected to ' + (dev.name || 'PoC-KBD');
     $('connect').hidden = true; $('app').hidden = false;
     sendCmd('__BONDS__');                                   // list now
     setTimeout(() => sendCmd('__MAC__'), 120);              // board BLE MAC
+    setTimeout(() => sendCmd('__STATUS__'), 240);           // USB / BLE-HID transport dots
     refreshSettings();                                      // reflect saved settings (spaced out)
     refreshTimer = setInterval(() => { if (!busy) sendCmd('__BONDS__'); }, 3000);   // auto-refresh (paused during file ops)
   } catch (e) { $('stat').textContent = '✖ ' + e.message; }
@@ -307,10 +339,42 @@ $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey
 // Tabs
 for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
   for (const x of document.querySelectorAll('.tab')) x.classList.toggle('active', x === t);
-  for (const id of ['type','payloads','devices','wifi','update','options','help']) $('tab-' + id).hidden = (id !== t.dataset.tab);
+  for (const id of ['type','keyboard','payloads','devices','wifi','update','options','help']) $('tab-' + id).hidden = (id !== t.dataset.tab);
   if (['wifi','update','options'].includes(t.dataset.tab)) refreshSettings();
   if (t.dataset.tab === 'update') checkLatest();
 };
+
+// ---- transport status dots (st:ble=1:usb=0) ------------------------------
+function renderStatus(v){
+  const m = /ble=(\d).*usb=(\d)/.exec(v); if (!m) return;
+  const set = (id, on) => { const e = $(id); if (!e) return; e.textContent = on ? '●' : '○'; e.style.color = on ? '#3fb950' : '#8b949e'; };
+  set('stBle', m[1] === '1'); set('stUsb', m[2] === '1');
+}
+
+// ---- live BLE-HID keyboard ----------------------------------------------
+// Printable input goes via 'input' events (works with mobile soft keyboards
+// too); Tab/Esc/arrows never fire 'input', so grab those on keydown.
+const kb = $('kbcap');
+if (kb) {
+  kb.addEventListener('input', e => {
+    if (!rxCh) return;
+    const it = e.inputType;
+    if (it === 'insertText' && e.data != null) sendCmd('__BLETYPE__:' + e.data);
+    else if (it === 'insertLineBreak' || it === 'insertParagraph') sendCmd('__BLEKEY__:enter');
+    else if (it === 'deleteContentBackward') sendCmd('__BLEKEY__:bksp');
+    else if (it === 'deleteContentForward')  sendCmd('__BLEKEY__:del');
+    else if (it === 'insertFromPaste' && e.data) sendCmd('__BLETYPE__:' + e.data);
+  });
+  const KD = { Tab:'tab', Escape:'esc', ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left',
+               ArrowRight:'right', Home:'home', End:'end', PageUp:'pgup', PageDown:'pgdn', Delete:'del' };
+  kb.addEventListener('keydown', e => {
+    if (KD[e.key]) { e.preventDefault(); if (rxCh) sendCmd('__BLEKEY__:' + KD[e.key]); }
+  });
+}
+for (const b of document.querySelectorAll('.kbk')) b.onclick = () => { if (rxCh) sendCmd('__BLEKEY__:' + b.dataset.k); if (kb) kb.focus(); };
+
+// ---- fire a payload over USB into the plugged-in PC ----------------------
+for (const b of document.querySelectorAll('.usbfire')) b.onclick = () => { if (rxCh) { sendCmd('__RUNUSB__:' + b.dataset.os); log('usb: fire ' + b.dataset.os + ' →'); } };
 
 let latestVer = '';
 async function checkLatest(){

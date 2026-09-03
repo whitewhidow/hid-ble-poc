@@ -38,6 +38,9 @@ static const uint8_t REPORT_MAP[] = {
 };
 
 static void ctrlNotify(const char* s) { if (ctrlTx) { ctrlTx->setValue((uint8_t*)s, strlen(s)); ctrlTx->notify(); } }
+// Public wrapper so the rest of the firmware (e.g. a USB fire from the button) can
+// surface what it's doing in the phone/web "board feedback" log.
+void bleHidNotify(const char* s) { ctrlNotify(s); }
 
 // keep advertising after a connection so a 2nd central (phone AND PC) can join.
 class SrvCB : public NimBLEServerCallbacks {
@@ -459,6 +462,48 @@ static void handleCmd(const char* cmd) {
     } else if (!strncmp(cmd, "__TDSET__:", 10)) {
         bleSetTypeDelay(atoi(cmd + 10));
         char b[16]; snprintf(b, sizeof(b), "typedelay:%d", bleTypeDelay()); ctrlNotify(b);
+    } else if (!strcmp(cmd, "__STATUS__")) {
+        // Live transport status: ble = a PC subscribed to our BLE-HID; usb = our
+        // USB device is enumerated on a host (only meaningful on the S3 boards).
+        char b[24]; snprintf(b, sizeof(b), "st:ble=%d:usb=%d", g_hidReady ? 1 : 0, usbHidMounted() ? 1 : 0);
+        ctrlNotify(b);
+    } else if (!strncmp(cmd, "__BLETYPE__:", 12)) {
+        bleHidType(cmd + 12);   // literal keystrokes over BLE-HID (Enter='\n', Tab='\t')
+    } else if (!strncmp(cmd, "__BLEKEY__:", 11)) {
+        // One non-printable / navigation key over BLE-HID (the on-screen keyboard).
+        const char* n = cmd + 11;
+        uint8_t mod = 0, key = 0;
+        if      (!strcmp(n, "enter")) key = 0x28;   else if (!strcmp(n, "esc"))   key = 0x29;
+        else if (!strcmp(n, "bksp"))  key = 0x2A;   else if (!strcmp(n, "tab"))   key = 0x2B;
+        else if (!strcmp(n, "space")) key = 0x2C;   else if (!strcmp(n, "del"))   key = 0x4C;
+        else if (!strcmp(n, "right")) key = 0x4F;   else if (!strcmp(n, "left"))  key = 0x50;
+        else if (!strcmp(n, "down"))  key = 0x51;   else if (!strcmp(n, "up"))    key = 0x52;
+        else if (!strcmp(n, "home"))  key = 0x4A;   else if (!strcmp(n, "end"))   key = 0x4D;
+        else if (!strcmp(n, "pgup"))  key = 0x4B;   else if (!strcmp(n, "pgdn"))  key = 0x4E;
+        else if (!strcmp(n, "gui"))   mod = 0x08;                          // Win/Cmd tap
+        else if (!strcmp(n, "cad"))   { mod = 0x01 | 0x04; key = 0x4C; }   // Ctrl+Alt+Del
+        if (key || mod) {
+            if (!g_hidReady || !input) ctrlNotify("no HID host paired");
+            else { sendReport(mod, key); ctrlNotify("key"); }
+        }
+    } else if (!strncmp(cmd, "__RUNUSB__:", 11)) {
+        // Fire a stored OS payload out of the board's USB-HID into the plugged-in PC.
+        const char* os = cmd + 11;
+#ifdef POC_HAS_USB_HID
+        int o = -1;
+        if      (!strcmp(os, "windows")) o = POC_OS_WINDOWS;
+        else if (!strcmp(os, "linux"))   o = POC_OS_LINUX;
+        else if (!strcmp(os, "macos"))   o = POC_OS_MACOS;
+        if (o < 0) ctrlNotify("usb: bad os");
+        else if (!usbHidMounted()) { char b[52]; snprintf(b, sizeof(b), "usb: no host (plug in to fire %s)", os); ctrlNotify(b); }
+        else {
+            char b[40]; snprintf(b, sizeof(b), "usb: firing %s payload", os); ctrlNotify(b);
+            usbSamplePayload(o);
+            ctrlNotify("usb: sent");
+        }
+#else
+        ctrlNotify("usb: no usb-hid on this board");
+#endif
     }
 }
 
@@ -466,4 +511,15 @@ static void handleCmd(const char* cmd) {
 void bleHidTick() {
     if (g_cmdReq) { g_cmdReq = false; handleCmd(g_cmd); }
     if (g_hasPending) { g_hasPending = false; bleHidRun(g_pending); }
+
+    // Push live transport status to the phone/web whenever it changes, so the portal
+    // dots update without polling (only while a phone is actually on the control svc).
+    static int8_t lastBle = -1, lastUsb = -1;
+    if (g_ctrlReady) {
+        int8_t b = g_hidReady ? 1 : 0, u = usbHidMounted() ? 1 : 0;
+        if (b != lastBle || u != lastUsb) {
+            lastBle = b; lastUsb = u;
+            char s[24]; snprintf(s, sizeof(s), "st:ble=%d:usb=%d", b, u); ctrlNotify(s);
+        }
+    } else { lastBle = lastUsb = -1; }
 }
