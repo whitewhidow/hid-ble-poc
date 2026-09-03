@@ -4,6 +4,7 @@
 // PC over BLE-HID. Advertises as "PoC-KBD"; bonds Just Works.
 #include "ble_hid.h"
 #include "usb_hid.h"   // pocFsRead / pocFsWrite* — edit the payload files over BLE
+#include "consumer_keys.h"   // media/consumer usage table (shared with USB)
 #include "netota.h"    // WiFi provisioning + in-app OTA self-update
 #include <WiFi.h>      // WiFi.status() for the transport indicators
 #include "display.h"   // OTA progress on the LCD
@@ -17,8 +18,9 @@
 #define CTRL_RX  "a0c50001-1234-4b0a-9c5e-000000000000"   // phone -> board: text to type
 #define CTRL_TX  "a0c50002-1234-4b0a-9c5e-000000000000"   // board -> phone: status/ack
 
-static NimBLECharacteristic* input  = nullptr;   // HID input report (-> PC)
-static NimBLECharacteristic* ctrlTx = nullptr;   // control notify (-> phone)
+static NimBLECharacteristic* input    = nullptr; // HID keyboard input report (-> PC)
+static NimBLECharacteristic* consumer = nullptr; // HID consumer-control input report (-> PC)
+static NimBLECharacteristic* ctrlTx   = nullptr; // control notify (-> phone)
 static volatile bool g_hidReady = false;         // PC subscribed to the HID report
 static int           g_conns    = 0;
 static char          g_mac[18]  = "";            // our own BLE address
@@ -30,11 +32,17 @@ static char          g_cmd[560] = "";            // pending control command (fil
 static volatile bool g_cmdReq  = false;
 
 static const uint8_t REPORT_MAP[] = {
+    // Keyboard (Report ID 1)
     0x05, 0x01, 0x09, 0x06, 0xA1, 0x01,
     0x85, 0x01,
     0x05, 0x07, 0x19, 0xE0, 0x29, 0xE7, 0x15, 0x00, 0x25, 0x01, 0x75, 0x01, 0x95, 0x08, 0x81, 0x02,
     0x95, 0x01, 0x75, 0x08, 0x81, 0x01,
     0x95, 0x06, 0x75, 0x08, 0x15, 0x00, 0x25, 0x65, 0x05, 0x07, 0x19, 0x00, 0x29, 0x65, 0x81, 0x00,
+    0xC0,
+    // Consumer Control (Report ID 2) — one 16-bit usage (0x000-0x3FF) per report
+    0x05, 0x0C, 0x09, 0x01, 0xA1, 0x01,
+    0x85, 0x02,
+    0x15, 0x00, 0x26, 0xFF, 0x03, 0x19, 0x00, 0x2A, 0xFF, 0x03, 0x75, 0x10, 0x95, 0x01, 0x81, 0x00,
     0xC0
 };
 
@@ -96,6 +104,15 @@ void bleHidType(const char* s) {
     if (!g_hidReady || !input) { ctrlNotify("no HID host paired"); return; }
     for (const char* p = s; *p; ++p) { uint8_t m, k; if (asciiToHid(*p, m, k)) sendReport(m, k); }
     ctrlNotify("typed");
+}
+
+// Consumer-control (media / application) key over BLE — one 16-bit usage on report 2.
+static void bleConsumer(uint16_t usage) {
+    if (!g_hidReady || !consumer) { ctrlNotify("no HID host paired"); return; }
+    uint8_t r[2] = { (uint8_t)(usage & 0xFF), (uint8_t)(usage >> 8) };
+    consumer->setValue(r, 2); consumer->notify(); delay(12);
+    uint8_t z[2] = { 0, 0 };
+    consumer->setValue(z, 2); consumer->notify(); delay(12);
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +181,7 @@ static void bleRunLine(String line) {
     if (line.startsWith("PrintLine "))   { bleTypeLiteral(line.substring(10)); bleCombo(0, 0x28); return; }
     if (line.startsWith("Print "))       { bleTypeLiteral(line.substring(6)); return; }
     if (line.startsWith("String ") || line.startsWith("STRING ")) { bleTypeLiteral(line.substring(7)); return; }
+    if (line.startsWith("Consumer ")) { String a = line.substring(9); a.trim(); uint16_t u = ccUsage(a.c_str()); if (u) bleConsumer(u); return; }
     if (line.startsWith("PressRelease ")){ uint8_t m, u; if (keyNameToUsage(line.substring(13), m, u)) bleCombo(m, u); return; }
     if (line.startsWith("Press "))       { uint8_t m, u; if (keyNameToUsage(line.substring(6),  m, u)) blePressUsage(m, u); return; }
     if (line.startsWith("CTRLALT "))     { uint8_t m, u; if (keyNameToUsage(line.substring(8),  m, u)) bleCombo(0x01 | 0x04, u); return; }
@@ -229,6 +247,7 @@ void bleHidBegin() {
     hid->setReportMap((uint8_t*)REPORT_MAP, sizeof(REPORT_MAP));
     input = hid->getInputReport(1);
     input->setCallbacks(new HidSubCB());
+    consumer = hid->getInputReport(2);   // consumer-control report (media / app keys)
     hid->setBatteryLevel(100);
 
     // Custom control service for the phone web page.
@@ -527,6 +546,15 @@ static void handleCmd(const char* cmd) {
     } else if (!strncmp(cmd, "__USBKEY__:", 11)) {
 #ifdef POC_HAS_USB_HID
         if (usbHidMounted()) usbHidKey(cmd + 11);
+#endif
+    } else if (!strncmp(cmd, "__BLECC__:", 10)) {
+        uint16_t u = ccUsage(cmd + 10); if (u) bleConsumer(u); else ctrlNotify("cc: unknown");
+    } else if (!strncmp(cmd, "__USBCC__:", 10)) {
+#ifdef POC_HAS_USB_HID
+        uint16_t u = ccUsage(cmd + 10);
+        if (!u) ctrlNotify("cc: unknown"); else if (usbHidMounted()) usbConsumer(u); else ctrlNotify("usb: no host");
+#else
+        ctrlNotify("usb: no usb-hid on this board");
 #endif
     } else if (!strncmp(cmd, "__USBRUN__:", 11)) {
 #ifdef POC_HAS_USB_HID

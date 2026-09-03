@@ -1,5 +1,6 @@
 #include "usb_hid.h"
 #include "ble_hid.h"   // bleHidMac() for {MAC} substitution
+#include "consumer_keys.h"   // ccUsage() for the Consumer script verb
 #include <Arduino.h>
 
 #ifndef POC_HAS_USB_HID
@@ -23,6 +24,7 @@ String pocSlotAssignments()                 { return String(); }
 #include <LittleFS.h>
 #include "USB.h"
 #include "USBHIDKeyboard.h"
+#include "USBHIDConsumerControl.h"
 // Stock header lacks these; press() maps KEY_x-0x88 -> HID usage.
 #ifndef KEY_NUM_LOCK
 #define KEY_NUM_LOCK    0xDB
@@ -32,6 +34,10 @@ String pocSlotAssignments()                 { return String(); }
 #endif
 
 static USBHIDKeyboard Keyboard;
+static USBHIDConsumerControl ConsumerControl;
+
+// Media / consumer-control key over USB (press + release the 16-bit usage).
+void usbConsumer(uint16_t usage) { ConsumerControl.press(usage); delay(30); ConsumerControl.release(); }
 
 static volatile bool          led_response_received = false;
 static volatile int           led_event_count = 0;
@@ -199,6 +205,7 @@ static void usbRunPayloadContent(const String& content) {
         if (line == "ENTER") Keyboard.write((uint8_t)'\n');
         else if (line.startsWith("DELAY ") || line.startsWith("Delay ")) delay(line.substring(6).toInt());
         else if (line.startsWith("STRING ")) usbHidType(subMac(line.substring(7)).c_str());
+        else if (line.startsWith("Consumer ")) { String a = line.substring(9); a.trim(); uint16_t u = ccUsage(a.c_str()); if (u) usbConsumer(u); }
         else if (line == "GUI") tapGui("");
         else if (line.startsWith("GUI ")) { String a = line.substring(4); a.trim(); tapGui(a); }
         else if (line.startsWith("CTRLALT ")) usbCombo(KEY_LEFT_CTRL, KEY_LEFT_ALT, 0, line.charAt(8));
@@ -394,5 +401,6 @@ void usbHidBegin() {
     Keyboard.onEvent(usbEventCallback);
     USB.begin();
     Keyboard.begin();
+    ConsumerControl.begin();
 }
 #endif // POC_HAS_USB_HID

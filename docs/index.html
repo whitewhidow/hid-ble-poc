@@ -78,7 +78,39 @@
     <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Script / text</div>
     <textarea id="text" rows="4" placeholder="text to type on the PC">hello from my phone</textarea>
     <div class="row"><button id="send" style="flex:1">Send over BLE-HID</button></div>
-    <div class="sub" style="margin:0">Plain text is typed as-is; each line can also be an Evil Crow command — e.g. <code>GuiR</code>, <code>Delay 500</code>, <code>PrintLine whoami</code>, <code>RunWin notepad</code>, <code>Press KEY_ENTER</code>, <code>CtrlAltT</code>. Ctrl/⌘+Enter sends. Full list in the <b>Commands</b> tab.</div>
+    <div class="sub" style="margin:0">Plain text is typed as-is; each line can also be an Evil Crow command — e.g. <code>GuiR</code>, <code>Delay 500</code>, <code>PrintLine whoami</code>, <code>RunWin notepad</code>, <code>Press KEY_ENTER</code>, <code>CtrlAltT</code>, <code>Consumer volup</code>. Ctrl/⌘+Enter sends. Full list in the <b>Commands</b> tab.</div>
+
+    <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Media &amp; system keys — to the target above</div>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin:0">
+      <button class="sec cc" data-cc="prev">⏮</button>
+      <button class="sec cc" data-cc="playpause">⏯</button>
+      <button class="sec cc" data-cc="next">⏭</button>
+      <button class="sec cc" data-cc="stop">⏹</button>
+      <button class="sec cc" data-cc="mute">🔇</button>
+      <button class="sec cc" data-cc="voldown">🔉</button>
+      <button class="sec cc" data-cc="volup">🔊</button>
+      <button class="sec cc" data-cc="brightdown">🔅</button>
+      <button class="sec cc" data-cc="brightup">🔆</button>
+    </div>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin:6px 0 0">
+      <button class="sec cc" data-cc="calc">Calc</button>
+      <button class="sec cc" data-cc="email">Email</button>
+      <button class="sec cc" data-cc="files">Files</button>
+      <button class="sec cc" data-cc="browser">Browser</button>
+      <button class="sec cc" data-cc="mediaplayer">Media</button>
+      <button class="sec cc" data-cc="calendar">Calendar</button>
+      <button class="sec cc" data-cc="lock">Lock</button>
+      <button class="sec cc" data-cc="controlpanel">Ctrl Panel</button>
+      <button class="sec cc" data-cc="taskmgr">Tasks</button>
+    </div>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin:6px 0 0">
+      <button class="sec cc" data-cc="webhome">🌐 Home</button>
+      <button class="sec cc" data-cc="webback">◀ Back</button>
+      <button class="sec cc" data-cc="webfwd">Fwd ▶</button>
+      <button class="sec cc" data-cc="webrefresh">⟳ Refresh</button>
+      <button class="sec cc" data-cc="bookmarks">★ Marks</button>
+      <button class="sec cc" data-cc="search">🔍 Search</button>
+    </div>
   </section>
 
   <section id="tab-payloads" hidden>
@@ -205,6 +237,9 @@
       <div class="c"><code>GuiSpace</code><span>Cmd+Space — macOS Spotlight.</span></div>
       <div class="c"><code>AltF2</code><span>Alt+F2 — Linux run dialog.</span></div>
       <div class="c"><code>CtrlAltT</code><span>Ctrl+Alt+T — open a Linux terminal.</span></div>
+
+      <h3>Media / consumer keys</h3>
+      <div class="c"><code>Consumer &lt;name&gt;</code><span>Send a media / application key (HID consumer control). Names: <code>play pause playpause stop next prev ff rewind record eject</code> · <code>mute volup voldown</code> · <code>brightup brightdown</code> · <code>calc email files browser mediaplayer wordproc spreadsheet calendar contacts controlpanel taskmgr lock logoff</code> · <code>webhome webback webfwd webstop webrefresh bookmarks search</code>. Also the buttons in the <b>Keyboard</b> tab.</span></div>
 
       <h3>Run (open a launcher, wait, type + Enter)</h3>
       <div class="c"><code>RunWin &lt;cmd&gt;</code><span>Win+R, then the command. Windows.</span></div>
@@ -437,6 +472,8 @@ function buildOSK(){
   updateModVis();
 }
 buildOSK();
+// media / consumer-control keys -> BLE or USB per the keyboard target
+for (const b of document.querySelectorAll('.cc')) b.onclick = () => { if (rxCh) sendCmd((kbT() === 'usb' ? '__USBCC__:' : '__BLECC__:') + b.dataset.cc); };
 
 // ---- fire a payload over USB into the plugged-in PC ----------------------
 // ---- fire a slot payload over the selected transport (BLE or USB) --------

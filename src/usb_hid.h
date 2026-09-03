@@ -30,5 +30,6 @@ void        usbHidType(const char* s);
 void        usbHidKey(const char* shortName);        // one nav/special key over USB
 void        usbHidChord(const char* mods, char ch);  // modifier(c/a/g)+char chord over USB
 void        usbRunScript(const char* s);             // run an Evil-Crow script string over USB
+void        usbConsumer(uint16_t usage);             // media / consumer-control key over USB
 void        usbSamplePayload(int os);   // runs the OS's payload file from LittleFS
 #endif
