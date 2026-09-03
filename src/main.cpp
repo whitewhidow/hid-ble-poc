@@ -133,7 +133,7 @@ static void fireOS(int menuIdx) {
 // Deep sleep: boots fresh (setup runs) on the next button tap. GPIO0 is RTC-
 // capable on the S3, so a press wakes it via ext1.
 static void deepSleep() {
-    dispShow("SLEEP", "press the button\nto wake", 0x8A97A2);
+    dispCenter("SLEEP", "\ntap the button\nto wake", 0x5AA9FF);
     delay(700);
     while (digitalRead(BTN) == LOW) delay(10);     // wait for the select-hold to release
     dispOff();                                     // backlight off + panel sleep
