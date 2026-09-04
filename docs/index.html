@@ -7,6 +7,7 @@
 <style>
   :root { color-scheme: dark; }
   [hidden] { display: none !important; }   /* beat inline display:flex on #hdr */
+  #hdrboard:empty { display: none; }       /* no bare pill before the board name arrives */
   body { margin:0; font:16px/1.5 system-ui,sans-serif; background:#0d1117; color:#e6edf3; padding:20px; max-width:520px; margin:0 auto; }
   h1 { font-size:20px; margin:0 0 4px; }
   .sub { color:#8b949e; font-size:13px; margin-bottom:16px; }
@@ -52,8 +53,8 @@
 <div id="stat"></div>
 <div id="hdr" hidden style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:10px;padding:9px 12px;background:#161b22;border:1px solid #30363d;border-radius:10px;font-size:13px">
   <span id="hdrConn" style="font-weight:600;color:#3fb950">● connected</span>
-  <span><b id="hdrver" style="color:#adbac7">—</b></span>
-  <span id="hdrboard" style="color:#8b949e"></span>
+  <span style="border:1px solid #30363d;border-radius:20px;padding:2px 9px;font-size:12px;font-weight:600;color:#8b949e">fw <b id="hdrver" style="color:#adbac7">—</b></span>
+  <span id="hdrboard" style="border:1px solid #30363d;border-radius:20px;padding:2px 9px;font-size:12px;color:#8b949e"></span>
   <span id="stBle"  style="margin-left:auto;color:#8b949e;font-weight:600">BLE-HID</span>
   <span id="stUsb"  style="color:#8b949e;font-weight:600">USB-HID</span>
   <span id="hdrbatt" style="color:#8b949e;font-weight:600"></span>
@@ -213,7 +214,7 @@
   </section>
 
   <section id="tab-options" hidden>
-    <div class="row" style="align-items:center;gap:10px;margin:6px 0 0">
+    <div id="rowAutorun" class="row" style="align-items:center;gap:10px;margin:6px 0 0">
       <span style="flex:1">On selecting an OS in the menu</span>
       <select id="autorun" style="flex:0 0 auto;padding:8px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font-size:15px">
         <option value="0">Run now</option>
@@ -238,7 +239,7 @@
       <span style="flex:1">Type speed — delay per character (ms), 0 = fastest; raise if chars are dropped</span>
       <input id="typedelay" type="number" min="0" max="100" step="1" style="flex:0 0 96px;text-align:right">
     </div>
-    <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0">
+    <label id="rowSplash" class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0">
       <input type="checkbox" id="splash" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0">
       <span style="flex:1">Show boot splash (off = boot straight to the menu, faster)</span>
     </label>
@@ -401,7 +402,9 @@ $('connect').onclick = async () => {
       if (v.startsWith('firedelay:')) { $('firedelay').value = v.slice(10); return; }
       if (v.startsWith('typedelay:')) { $('typedelay').value = v.slice(10); return; }
       if (v.startsWith('ver:'))       { const vv = 'v' + v.slice(4); $('fwver').textContent = vv; $('hdrver').textContent = vv; applyVerColor(); return; }
-      if (v.startsWith('board:'))     { const e = $('hdrboard'); if (e) e.textContent = v.slice(6); return; }
+      if (v.startsWith('board:'))     { const bn = v.slice(6); const e = $('hdrboard'); if (e) e.textContent = bn;
+        const hl = /headless/i.test(bn);   // no display -> hide the splash + Run/Arm options (arm-at-boot stays)
+        if ($('rowAutorun')) $('rowAutorun').hidden = hl; if ($('rowSplash')) $('rowSplash').hidden = hl; return; }
       if (v.startsWith('mac:'))       { $('bmac').textContent = v.slice(4); return; }
       if (v.startsWith('st:'))        { renderStatus(v); return; }
       if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);

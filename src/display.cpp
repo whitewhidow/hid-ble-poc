@@ -1,6 +1,21 @@
+#include "display.h"
+
+#if defined(POC_BOARD_HEADLESS)
+// Headless board (no panel): the BLE portal is the entire UI, so every display
+// call is a no-op — and we never init a panel (which would hang with none wired).
+void dispBegin() {}
+void dispShow(const char*, const char*, uint32_t) {}
+void dispCenter(const char*, const char*, uint32_t) {}
+void dispSplash(const char*, const char*) {}
+void dispBle(bool, bool, bool, bool, bool, int, int, int) {}
+void dispOff() {}
+void dispOn() {}
+void dispMenu(const char*, const char* const*, int, int) {}
+void dispCmd(const char*, const char*) {}
+#else
+
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
-#include "display.h"
 
 // Board-specific ST7789 pins/geometry (from BBoink board.h), selected by flag.
 #if defined(POC_BOARD_TEMBED)
@@ -241,3 +256,5 @@ void dispBle(bool pc, bool phone, bool usb, bool autorun, bool armboot, int targ
         lcd.setTextColor(dim, 0x000000u); lcd.setCursor(bx - pw * 6 - 4, y + 4); lcd.print(p);
     }
 }
+
+#endif  // POC_BOARD_HEADLESS

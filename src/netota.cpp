@@ -4,7 +4,7 @@
 
 const char* netVersion() { return POC_VERSION; }
 
-#if defined(POC_BOARD_TEMBED) || defined(POC_BOARD_TDONGLE)
+#if defined(POC_BOARD_TEMBED) || defined(POC_BOARD_TDONGLE) || defined(POC_BOARD_HEADLESS)
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>

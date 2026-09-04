@@ -10,17 +10,19 @@ the pairing — after that everything is BLE.
 
 ## Boards
 
-Both targets are ESP32-S3 (native USB → USB-HID, plus BLE-HID), selected by build
+All targets are ESP32-S3 (native USB → USB-HID, plus BLE-HID), selected by build
 flags and sharing one firmware:
 
 | env | board | LCD | battery | notes |
 |-----|-------|-----|---------|-------|
-| `tembed`  | LilyGo T-Embed CC1101 | ST7789 320×170 | yes (BQ27220) | encoder button |
-| `tdongle` | LilyGo T-Dongle S3    | ST7735S 80×160 | no | plugs straight into USB-A · verified on hardware (smaller per-board UI metrics; menu drops **Sleep** since it's USB-powered) |
+| `tembed`   | LilyGo T-Embed CC1101 | ST7789 320×170 | yes (BQ27220) | encoder button |
+| `tdongle`  | LilyGo T-Dongle S3    | ST7735S 80×160 | no | plugs straight into USB-A · verified on hardware (smaller per-board UI metrics; menu drops **Sleep** since it's USB-powered) |
+| `headless` | Generic ESP32-S3 module (8 MB, no PSRAM) | none | no | **no display, no button** — the phone portal is the entire UI. USB-HID + BLE-HID + BLE control all work; 8 MB A/B partition so WiFi self-update works. Verified on hardware. Reflash needs manual download mode (GPIO0→GND while plugging, no BOOT button). |
 
 - `POC_BOARD_*` picks display pins/panel + button; `POC_HAS_USB_HID` gates the USB side.
-- `display.cpp` parameterises panel type/size/offsets/frequency per board.
+- `display.cpp` parameterises panel type/size/offsets/frequency per board — or **no-ops entirely** on `headless` (null display; the BLE portal is the UI).
 - Shared `ble_hid.cpp` (NimBLE 2.x HID keyboard **+** a custom control service).
+- The **firmware switch** to [BBoink](https://github.com/whitewhidow/bboink) is only on `tembed`/`tdongle` (boards with a BBoink counterpart + matching 16 MB layout); it no-ops on `headless`.
 
 ## What it does
 

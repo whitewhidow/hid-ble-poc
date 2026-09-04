@@ -29,11 +29,13 @@ jobs:
         run: |
           pio run -e tembed
           pio run -e tdongle
+          pio run -e headless
 
       - name: Stage release assets
         run: |
-          cp .pio/build/tembed/firmware.bin  hid-ble-poc-app-tembed.bin
-          cp .pio/build/tdongle/firmware.bin hid-ble-poc-app-tdongle.bin
+          cp .pio/build/tembed/firmware.bin   hid-ble-poc-app-tembed.bin
+          cp .pio/build/tdongle/firmware.bin  hid-ble-poc-app-tdongle.bin
+          cp .pio/build/headless/firmware.bin hid-ble-poc-app-headless.bin
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -41,4 +43,5 @@ jobs:
           files: |
             hid-ble-poc-app-tembed.bin
             hid-ble-poc-app-tdongle.bin
+            hid-ble-poc-app-headless.bin
           generate_release_notes: true

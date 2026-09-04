@@ -11,7 +11,7 @@
 #  endif
 #endif
 
-#define POC_VERSION "0.1.25"
+#define POC_VERSION "0.1.26"
 
 // App-only image (firmware.bin) published by CI on a tag. The in-app updater
 // downloads this over WiFi and writes it to the spare OTA slot. Each board pulls
@@ -19,6 +19,9 @@
 #if defined(POC_BOARD_TDONGLE)
 #define POC_OTA_URL \
     "https://github.com/whitewhidow/hid-ble-poc/releases/latest/download/hid-ble-poc-app-tdongle.bin"
+#elif defined(POC_BOARD_HEADLESS)
+#define POC_OTA_URL \
+    "https://github.com/whitewhidow/hid-ble-poc/releases/latest/download/hid-ble-poc-app-headless.bin"
 #else
 #define POC_OTA_URL \
     "https://github.com/whitewhidow/hid-ble-poc/releases/latest/download/hid-ble-poc-app-tembed.bin"
@@ -34,6 +37,8 @@
 #elif defined(POC_BOARD_TDONGLE)
 #define POC_OTHER_FW_URL \
     "https://github.com/whitewhidow/bboink/releases/latest/download/bboink-app-tdongle-s3.bin"
+#elif defined(POC_BOARD_HEADLESS)
+#define POC_OTHER_FW_URL ""                          // no BBoink build for the headless board — switch fails cleanly
 #else
 #define POC_OTHER_FW_URL \
     "https://github.com/whitewhidow/bboink/releases/latest/download/bboink-app-t-embed-cc1101.bin"

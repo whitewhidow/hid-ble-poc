@@ -1,0 +1,9 @@
+# Headless generic ESP32-S3 (8MB) — A/B OTA layout + LittleFS payloads.
+# No display/button; the BLE portal is the entire UI. Two 3MB app slots keep the
+# WiFi self-update working (Update.h writes the spare slot, otadata flips it).
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x5000,
+otadata,    data, ota,      0xe000,   0x2000,
+app0,       app,  ota_0,    0x10000,  0x300000,
+app1,       app,  ota_1,    0x310000, 0x300000,
+littlefs,   data, spiffs,   0x610000, 0x1F0000,

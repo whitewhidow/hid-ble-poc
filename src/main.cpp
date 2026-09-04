@@ -22,8 +22,10 @@
 #define POC_BOARD_NAME "T-Embed CC1101"
 #elif defined(POC_BOARD_TDONGLE)
 #define POC_BOARD_NAME "T-Dongle S3"
+#elif defined(POC_BOARD_HEADLESS)
+#define POC_BOARD_NAME "Headless S3"
 #else
-#error "define POC_BOARD_TEMBED or POC_BOARD_TDONGLE"
+#error "define POC_BOARD_TEMBED, POC_BOARD_TDONGLE or POC_BOARD_HEADLESS"
 #endif
 
 static const int BTN = 0;    // GPIO0: T-Embed encoder push / T-Dongle button (also BOOT)
@@ -233,6 +235,9 @@ void setup() {
     armBoot = bleArmBoot();             // arming headless -> skip the splash, fire ASAP
 #endif
     bool showSplash = !armBoot && bleSplash();   // also skippable via the portal option
+#if defined(POC_BOARD_HEADLESS)
+    showSplash = false;                          // no display -> no splash, and skip its 2s boot linger
+#endif
     if (showSplash) dispSplash(netVersion(), POC_BOARD_NAME);   // graphical boot splash
     usbHidBegin();
     bleHidBegin();
