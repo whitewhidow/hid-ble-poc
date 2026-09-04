@@ -28,14 +28,16 @@ jobs:
       - name: Build + package bins (app-only + merged)
         run: |
           set -e
-          BA=$(find ~/.platformio/packages -name boot_app0.bin -path '*framework-arduinoespressif32*' | head -1)
           declare -A SIZE=( [tembed]=16MB [tdongle]=16MB [headless]=8MB )
           for env in tembed tdongle headless; do
             pio run -e "$env"
+            # boot_app0 only exists after the framework is installed by the first build
+            BA=$(find ~/.platformio/packages -name boot_app0.bin -path '*framework-arduinoespressif32*' | head -1)
+            [ -n "$BA" ] || { echo "boot_app0.bin not found"; exit 1; }
             B=.pio/build/$env
             cp "$B/firmware.bin" "hid-ble-poc-app-$env.bin"
-            python -m esptool --chip esp32s3 merge_bin -o "hid-ble-poc-$env.bin" \
-              --flash_mode dio --flash_size "${SIZE[$env]}" \
+            python -m esptool --chip esp32s3 merge-bin -o "hid-ble-poc-$env.bin" \
+              --flash-mode dio --flash-size "${SIZE[$env]}" \
               0x0 "$B/bootloader.bin" 0x8000 "$B/partitions.bin" 0xe000 "$BA" 0x10000 "$B/firmware.bin"
           done
 
