@@ -1,8 +1,10 @@
 name: release
 
-# Tag a commit (git tag vX.Y.Z && git push --tags) to publish the T-Embed app
-# image to a GitHub release. The board's in-app updater pulls
-# releases/latest/download/hid-ble-poc-app-tembed.bin (see src/version.h).
+# Tag a commit (git tag vX.Y.Z && git push --tags) to, per board (all ESP32-S3):
+#   hid-ble-poc-app-<env>.bin  app-only image  -> in-app OTA / self-update (src/version.h)
+#   hid-ble-poc-<env>.bin      merged image    -> full USB flash at 0x0 (esptool / web flasher)
+# and commit the merged bins into docs/flasher/ so the GitHub-Pages web flasher
+# (whitewhidow.github.io/hid-ble-poc/flasher/) serves them same-origin. Keeps latest 2.
 on:
   push:
     tags: [ 'v*' ]
@@ -20,22 +22,31 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install PlatformIO
-        run: |
-          python -m pip install --upgrade pip
-          pip install platformio
+      - name: Install PlatformIO + esptool
+        run: pip install --upgrade platformio "esptool==5.1.0"
 
-      - name: Build app images
+      - name: Build + package bins (app-only + merged)
         run: |
-          pio run -e tembed
-          pio run -e tdongle
-          pio run -e headless
+          set -e
+          BA=$(find ~/.platformio/packages -name boot_app0.bin -path '*framework-arduinoespressif32*' | head -1)
+          declare -A SIZE=( [tembed]=16MB [tdongle]=16MB [headless]=8MB )
+          for env in tembed tdongle headless; do
+            pio run -e "$env"
+            B=.pio/build/$env
+            cp "$B/firmware.bin" "hid-ble-poc-app-$env.bin"
+            python -m esptool --chip esp32s3 merge_bin -o "hid-ble-poc-$env.bin" \
+              --flash_mode dio --flash_size "${SIZE[$env]}" \
+              0x0 "$B/bootloader.bin" 0x8000 "$B/partitions.bin" 0xe000 "$BA" 0x10000 "$B/firmware.bin"
+          done
 
-      - name: Stage release assets
-        run: |
-          cp .pio/build/tembed/firmware.bin   hid-ble-poc-app-tembed.bin
-          cp .pio/build/tdongle/firmware.bin  hid-ble-poc-app-tdongle.bin
-          cp .pio/build/headless/firmware.bin hid-ble-poc-app-headless.bin
+      - name: Upload merged bins (for the flasher job)
+        uses: actions/upload-artifact@v4
+        with:
+          name: poc-merged-bins
+          path: |
+            hid-ble-poc-tembed.bin
+            hid-ble-poc-tdongle.bin
+            hid-ble-poc-headless.bin
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -44,4 +55,58 @@ jobs:
             hid-ble-poc-app-tembed.bin
             hid-ble-poc-app-tdongle.bin
             hid-ble-poc-app-headless.bin
+            hid-ble-poc-tembed.bin
+            hid-ble-poc-tdongle.bin
+            hid-ble-poc-headless.bin
           generate_release_notes: true
+
+  # Commit the merged bins into docs/flasher/fw/<tag>/ on main so the Pages web
+  # flasher can serve them same-origin (release assets have no CORS). Keeps latest 2.
+  publish-flasher:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download merged bins
+        uses: actions/download-artifact@v4
+        with:
+          name: poc-merged-bins
+          path: _bins
+
+      - name: Stage bins + regenerate versions.json (keep latest 2)
+        run: |
+          set -e
+          VER="${GITHUB_REF_NAME}"
+          mkdir -p "docs/flasher/fw/$VER"
+          for env in tembed tdongle headless; do
+            cp "_bins/hid-ble-poc-$env.bin" "docs/flasher/fw/$VER/hid-ble-poc-$env.bin"
+          done
+          rm -rf _bins
+          keep=$(ls -d docs/flasher/fw/v* | xargs -n1 basename | sort -V | tail -2)
+          for d in docs/flasher/fw/v*; do
+            b=$(basename "$d")
+            echo "$keep" | grep -qx "$b" || { echo "prune $b"; rm -rf "$d"; }
+          done
+          vers=$(ls -d docs/flasher/fw/v* | xargs -n1 basename | sort -Vr | jq -R . | jq -s .)
+          jq -n --argjson versions "$vers" '{
+            boards: [
+              {env:"tembed",   name:"LilyGo T-Embed CC1101",                   chipFamily:"ESP32-S3"},
+              {env:"tdongle",  name:"LilyGo T-Dongle S3",                      chipFamily:"ESP32-S3"},
+              {env:"headless", name:"Generic ESP32-S3 (headless, no display)", chipFamily:"ESP32-S3"}
+            ],
+            versions: $versions
+          }' > docs/flasher/versions.json
+          cat docs/flasher/versions.json
+
+      - name: Commit to main
+        run: |
+          git config user.name  whitewhidow
+          git config user.email contact@branchbit.be
+          git add docs/flasher/fw docs/flasher/versions.json
+          if git diff --cached --quiet; then echo "nothing to publish"; exit 0; fi
+          git commit -m "flasher: publish ${GITHUB_REF_NAME} bins (keep latest 2)"
+          git push origin HEAD:main

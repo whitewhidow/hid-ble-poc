@@ -66,6 +66,13 @@ Connect to `PoC-KBD`; a unified header shows the connection, firmware version, a
 
 ## Build / flash
 
+**No toolchain?** Use the browser **[web flasher](https://whitewhidow.github.io/hid-ble-poc/flasher/)**
+(Chrome/Edge desktop, Web Serial) — pick your board + version and Install. It flashes the
+merged image (bootloader + partitions + app) over USB. Put the board in download mode first
+(T-Embed: hold BOOT + tap RESET; T-Dongle: hold button while plugging; headless: GPIO0→GND).
+
+From source:
+
 ```
 pio run -e tembed  -t buildfs     # build the LittleFS payload image (data/ -> littlefs.bin)
 pio run -e tembed  -t uploadfs    # flash the payloads (only after editing data/*.txt)

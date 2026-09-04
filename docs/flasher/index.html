@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>PoC-KBD Web Flasher</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e; --faint:#5c6772; --cyan:#22d3e0; --amber:#f7c948; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.5 system-ui,sans-serif; background:var(--bg); color:var(--text); padding:20px; max-width:560px; margin:0 auto; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 22px; font-size:14px; }
+  label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:14px 0 4px; }
+  select { width:100%; padding:11px; border-radius:10px; border:1px solid var(--border); background:var(--panel); color:var(--text); font-size:15px; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-top:16px; }
+  .panel h3 { font-size:15px; margin:0 0 8px; }
+  .panel ul { margin:6px 0 0; padding-left:18px; } .panel li { margin:6px 0; font-size:14px; color:var(--muted); }
+  .warn { color:var(--amber); }
+  b { color:var(--text); }
+  esp-web-install-button { --esp-tools-button-color:#04181b; --esp-tools-button-background-color:var(--cyan); display:inline-block; margin-top:4px; }
+  pre { background:rgba(127,127,127,.12); padding:11px; border-radius:8px; overflow-x:auto; font:12.5px ui-monospace,monospace; margin:8px 0; }
+  code { color:#7ee787; font:12.5px ui-monospace,monospace; }
+  footer { margin-top:28px; color:var(--faint); font-size:13px; font-family:ui-monospace,monospace; display:flex; gap:16px; flex-wrap:wrap; }
+  footer a { color:var(--muted); } footer a:hover { color:var(--cyan); }
+  h1 .pig { margin-right:6px; }
+</style>
+</head>
+<body>
+  <h1><span class="pig">🐷</span>PoC-KBD Web Flasher</h1>
+  <p class="sub">Flash your board over USB, straight from the browser — no esptool, no drivers. All targets are ESP32-S3.</p>
+
+  <label for="board">Board</label>
+  <select id="board"></select>
+
+  <label for="version">Firmware version</label>
+  <select id="version"></select>
+
+  <div style="margin:22px 0 6px">
+    <esp-web-install-button id="btn">
+      <span slot="unsupported" class="warn">
+        This browser can't flash over USB. Use <b>Chrome or Edge on desktop</b>
+        (Windows / Linux / macOS). Web Serial isn't available on Firefox, Safari, or phones.
+      </span>
+      <span slot="not-allowed" class="warn">You need to open this page over <b>https</b>.</span>
+    </esp-web-install-button>
+  </div>
+
+  <div class="panel">
+    <h3>Before you click Install</h3>
+    <ul>
+      <li>Connect the board with a <b>USB-C data cable</b> and pick its serial port in the popup.</li>
+      <li>These boards run native USB as an HID keyboard, so they <b>don't auto-reset</b> into download mode.
+          Put the board in <b>download mode</b> first, then Connect:
+          <ul>
+            <li><b>T-Embed:</b> hold <b>BOOT</b>, tap <b>RESET</b>, release BOOT.</li>
+            <li><b>T-Dongle:</b> hold its button while plugging the USB-A in.</li>
+            <li><b>Headless (no button):</b> tie <b>GPIO0 → GND</b> while plugging in.</li>
+          </ul></li>
+      <li><b>Updating a board that already runs PoC-KBD?</b> Leave <b>Erase device</b> <b>unticked</b> —
+          your saved WiFi + payloads live in separate partitions and are preserved. Only tick
+          <b>Erase device</b> for a clean first install.</li>
+      <li>After flashing, tap RESET (or unplug/replug without BOOT/GPIO0 held) to start the new firmware.</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h3>What is this?</h3>
+    <p style="margin:0;color:var(--muted);font-size:14px">A USB-HID → BLE-HID pairing-bootstrap keyboard: the board types just enough to
+      pair its own BLE keyboard, then persists as a wireless keyboard. Control it from the
+      <a href="../" style="color:var(--cyan)">phone portal</a> (Web Bluetooth).</p>
+  </div>
+
+  <footer>
+    <a href="../">BLE portal</a>
+    <a href="https://github.com/whitewhidow/hid-ble-poc#readme">README</a>
+    <a href="https://github.com/whitewhidow/hid-ble-poc/releases">Releases</a>
+  </footer>
+
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+  <script>
+  (async () => {
+    const boardSel = document.getElementById('board');
+    const verSel   = document.getElementById('version');
+    const btn      = document.getElementById('btn');
+    let blobUrl = null;
+
+    let cfg;
+    try {
+      cfg = await (await fetch('./versions.json', { cache: 'no-cache' })).json();
+    } catch (e) {
+      document.body.insertAdjacentHTML('beforeend',
+        '<p class="warn">Could not load firmware list (versions.json). Try again later.</p>');
+      return;
+    }
+
+    for (const b of cfg.boards) {
+      const o = document.createElement('option');
+      o.value = b.env; o.textContent = b.name; o.dataset.chip = b.chipFamily;
+      boardSel.appendChild(o);
+    }
+    for (const v of cfg.versions) {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = v;
+      verSel.appendChild(o);
+    }
+
+    function refreshManifest() {
+      const env  = boardSel.value;
+      const chip = boardSel.selectedOptions[0].dataset.chip;
+      const ver  = verSel.value;
+      const name = boardSel.selectedOptions[0].textContent;
+      const binUrl = new URL(`./fw/${ver}/hid-ble-poc-${env}.bin`, location.href).href;
+      const manifest = {
+        name: `PoC-KBD — ${name}`,
+        version: ver,
+        new_install_prompt_erase: true,
+        builds: [ { chipFamily: chip, parts: [ { path: binUrl, offset: 0 } ] } ],
+      };
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      blobUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/json' }));
+      btn.setAttribute('manifest', blobUrl);
+    }
+
+    boardSel.addEventListener('change', refreshManifest);
+    verSel.addEventListener('change', refreshManifest);
+    refreshManifest();
+  })();
+  </script>
+</body>
+</html>

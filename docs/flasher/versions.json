@@ -1,0 +1,22 @@
+{
+  "boards": [
+    {
+      "env": "tembed",
+      "name": "LilyGo T-Embed CC1101",
+      "chipFamily": "ESP32-S3"
+    },
+    {
+      "env": "tdongle",
+      "name": "LilyGo T-Dongle S3",
+      "chipFamily": "ESP32-S3"
+    },
+    {
+      "env": "headless",
+      "name": "Generic ESP32-S3 (headless, no display)",
+      "chipFamily": "ESP32-S3"
+    }
+  ],
+  "versions": [
+    "v0.1.27"
+  ]
+}
