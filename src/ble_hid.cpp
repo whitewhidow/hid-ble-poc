@@ -501,8 +501,9 @@ static void handleCmd(const char* cmd) {
     } else if (!strcmp(cmd, "__MAC__")) {
         ctrlNotify((String("mac:") + bleHidMac()).c_str());
     } else if (!strcmp(cmd, "__VER__")) {
-        ctrlNotify((String("ver:") + netVersion()).c_str());
-        ctrlNotify((String("board:") + pocBoardName()).c_str());
+        // ONE notify: two rapid ctrlNotify() calls race (setValue+notify has no flush,
+        // so the 2nd clobbers the 1st). Pack version + board name into a single line.
+        ctrlNotify((String("ver:") + netVersion() + "|" + pocBoardName()).c_str());
     } else if (!strcmp(cmd, "__WIFIST__")) {
         ctrlNotify(netStatus().c_str());
     } else if (!strncmp(cmd, "__WIFI__:", 9)) {

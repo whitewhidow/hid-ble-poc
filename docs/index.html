@@ -64,8 +64,8 @@
 <div id="app" hidden>
   <div class="tabs">
     <button class="tab active" data-tab="keyboard">Keyboard</button>
-    <button class="tab" data-tab="devices">Devices</button>
     <button class="tab" data-tab="payloads">Payloads</button>
+    <button class="tab" data-tab="devices">Devices</button>
     <button class="tab" data-tab="wifi">WiFi</button>
     <button class="tab" data-tab="update">Update</button>
     <button class="tab" data-tab="options">Options</button>
@@ -401,10 +401,10 @@ $('connect').onclick = async () => {
       if (v.startsWith('os:'))      { armOs = v.slice(3); updateArmSel(); return; }
       if (v.startsWith('firedelay:')) { $('firedelay').value = v.slice(10); return; }
       if (v.startsWith('typedelay:')) { $('typedelay').value = v.slice(10); return; }
-      if (v.startsWith('ver:'))       { const vv = 'v' + v.slice(4); $('fwver').textContent = vv; $('hdrver').textContent = vv; applyVerColor(); return; }
-      if (v.startsWith('board:'))     { const bn = v.slice(6); const e = $('hdrboard'); if (e) e.textContent = bn;
-        const hl = /headless/i.test(bn);   // no display -> hide the splash + Run/Arm options (arm-at-boot stays)
-        if ($('rowAutorun')) $('rowAutorun').hidden = hl; if ($('rowSplash')) $('rowSplash').hidden = hl; return; }
+      if (v.startsWith('ver:'))       { const rest = v.slice(4), bar = rest.indexOf('|');   // "ver:<v>|<board>"
+        const vv = 'v' + (bar >= 0 ? rest.slice(0, bar) : rest); $('fwver').textContent = vv; $('hdrver').textContent = vv; applyVerColor();
+        if (bar >= 0) setBoard(rest.slice(bar + 1)); return; }
+      if (v.startsWith('board:'))     { setBoard(v.slice(6)); return; }   // legacy split form
       if (v.startsWith('mac:'))       { $('bmac').textContent = v.slice(4); return; }
       if (v.startsWith('st:'))        { renderStatus(v); return; }
       if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
@@ -610,6 +610,9 @@ updateFireBtns();
 let latestVer = '';   // '' = not checked yet · null = check failed (phone offline) · else the version
 // Colour the header version: grey until known, orange if we couldn't reach GitHub,
 // green if it matches the latest release, red if the board is outdated.
+function setBoard(bn){ const e = $('hdrboard'); if (e) e.textContent = bn;
+  const hl = /headless/i.test(bn);   // no display -> hide splash + Run/Arm options (arm-at-boot stays)
+  if ($('rowAutorun')) $('rowAutorun').hidden = hl; if ($('rowSplash')) $('rowSplash').hidden = hl; }
 function applyVerColor(){
   const e = $('hdrver'); if (!e) return;
   const cur = (e.textContent || '').replace(/^v/, '');
@@ -636,6 +639,7 @@ function renderWifi(v){
   if (rest.includes('|')) {
     const [ssid, state, ip, ver] = rest.split('|');
     $('wifiStat').textContent = `wifi: ${ssid} — ${state}` + (ip && ip !== '-' ? ` (${ip})` : '') + `\nfirmware v${ver}`;
+    if (ver) { $('hdrver').textContent = 'v' + ver; $('fwver').textContent = 'v' + ver; applyVerColor(); }   // fallback: version from __WIFIST__ (in case ver: was dropped)
   } else {
     $('wifiStat').textContent = 'wifi: ' + rest;
   }
