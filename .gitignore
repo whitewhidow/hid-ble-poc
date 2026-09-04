@@ -3,3 +3,5 @@
 *.elf
 *.map
 src/dev_secrets.h
+# ...except firmware images published to the web flasher (served by GitHub Pages).
+!docs/flasher/fw/**/*.bin
