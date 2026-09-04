@@ -84,6 +84,9 @@ static int batteryPct() {
 static int batteryPct() { return -1; }
 #endif
 
+int         pocBatteryPct() { return batteryPct(); }   // exposed to ble_hid for the portal header
+const char* pocBoardName()  { return POC_BOARD_NAME; }
+
 static void statusBar() { dispBle(bleHidConnected(), bleHidPhone(), usbHost(), bleAutorun(), bleArmBoot(), bleTargetOs(), batteryPct(), bleHidConnCount()); }
 
 static void drawMenu() {

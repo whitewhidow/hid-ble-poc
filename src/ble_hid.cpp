@@ -14,6 +14,8 @@
 #include <NimBLEDevice.h>
 
 extern void pocRequestFwFetch(bool self);   // main.cpp: flag a reboot-to-fetch (self/switch)
+extern int         pocBatteryPct();          // main.cpp: battery % (-1 = none) for the portal header
+extern const char* pocBoardName();           // main.cpp: board display name for the portal header
 #include <NimBLEHIDDevice.h>
 
 // Custom control service (the phone connects here; Web Bluetooth can't touch HID).
@@ -500,6 +502,7 @@ static void handleCmd(const char* cmd) {
         ctrlNotify((String("mac:") + bleHidMac()).c_str());
     } else if (!strcmp(cmd, "__VER__")) {
         ctrlNotify((String("ver:") + netVersion()).c_str());
+        ctrlNotify((String("board:") + pocBoardName()).c_str());
     } else if (!strcmp(cmd, "__WIFIST__")) {
         ctrlNotify(netStatus().c_str());
     } else if (!strncmp(cmd, "__WIFI__:", 9)) {
@@ -555,7 +558,7 @@ static void handleCmd(const char* cmd) {
     } else if (!strcmp(cmd, "__STATUS__")) {
         // Live transport status: ble = a PC subscribed to our BLE-HID; usb = our
         // USB device is enumerated on a host (only meaningful on the S3 boards).
-        char b[64]; snprintf(b, sizeof(b), "st:ble=%d:usb=%d:wifi=%d:proto=%d:rssi=%d", g_hidReady ? 1 : 0, usbHidMounted() ? 1 : 0, (WiFi.status() == WL_CONNECTED) ? 1 : 0, usbHidProtocol(), bleRssi());
+        char b[80]; snprintf(b, sizeof(b), "st:ble=%d:usb=%d:wifi=%d:proto=%d:rssi=%d:batt=%d", g_hidReady ? 1 : 0, usbHidMounted() ? 1 : 0, (WiFi.status() == WL_CONNECTED) ? 1 : 0, usbHidProtocol(), bleRssi(), pocBatteryPct());
         ctrlNotify(b);
     } else if (!strncmp(cmd, "__BLETYPE__:", 12)) {
         bleHidType(cmd + 12);   // literal keystrokes over BLE-HID (Enter='\n', Tab='\t')
@@ -741,7 +744,7 @@ void bleHidTick() {
         int8_t b = g_hidReady ? 1 : 0, u = usbHidMounted() ? 1 : 0, w = (WiFi.status() == WL_CONNECTED) ? 1 : 0;
         if (b != lastBle || u != lastUsb || w != lastWifi) {
             lastBle = b; lastUsb = u; lastWifi = w;
-            char s[64]; snprintf(s, sizeof(s), "st:ble=%d:usb=%d:wifi=%d:proto=%d:rssi=%d", b, u, w, usbHidProtocol(), bleRssi()); ctrlNotify(s);
+            char s[80]; snprintf(s, sizeof(s), "st:ble=%d:usb=%d:wifi=%d:proto=%d:rssi=%d:batt=%d", b, u, w, usbHidProtocol(), bleRssi(), pocBatteryPct()); ctrlNotify(s);
         }
     } else { lastBle = lastUsb = lastWifi = -1; }
 }

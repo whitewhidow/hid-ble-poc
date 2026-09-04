@@ -53,8 +53,10 @@
 <div id="hdr" hidden style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:10px;padding:9px 12px;background:#161b22;border:1px solid #30363d;border-radius:10px;font-size:13px">
   <span id="hdrConn" style="font-weight:600;color:#3fb950">● connected</span>
   <span><b id="hdrver" style="color:#adbac7">—</b></span>
+  <span id="hdrboard" style="color:#8b949e"></span>
   <span id="stBle"  style="margin-left:auto;color:#8b949e;font-weight:600">BLE-HID</span>
   <span id="stUsb"  style="color:#8b949e;font-weight:600">USB-HID</span>
+  <span id="hdrbatt" style="color:#8b949e;font-weight:600"></span>
   <span id="linkinfo" style="flex-basis:100%;color:#5c6772;font-size:11.5px;font-family:ui-monospace,monospace"></span>
 </div>
 
@@ -399,6 +401,7 @@ $('connect').onclick = async () => {
       if (v.startsWith('firedelay:')) { $('firedelay').value = v.slice(10); return; }
       if (v.startsWith('typedelay:')) { $('typedelay').value = v.slice(10); return; }
       if (v.startsWith('ver:'))       { const vv = 'v' + v.slice(4); $('fwver').textContent = vv; $('hdrver').textContent = vv; applyVerColor(); return; }
+      if (v.startsWith('board:'))     { const e = $('hdrboard'); if (e) e.textContent = v.slice(6); return; }
       if (v.startsWith('mac:'))       { $('bmac').textContent = v.slice(4); return; }
       if (v.startsWith('st:'))        { renderStatus(v); return; }
       if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
@@ -460,6 +463,8 @@ function renderStatus(v){
     if (mr) parts.push('BLE RSSI: ' + (mr[1] === '0' ? '—' : mr[1] + ' dBm'));
     if (parts.length) li.textContent = parts.join('   ·   ');
   }
+  const mb = /batt=(-?\d+)/.exec(v), be = $('hdrbatt');
+  if (be && mb) { const p = +mb[1]; be.textContent = p >= 0 ? ('🔋 ' + p + '%') : ''; }   // -1 = no battery -> hide
 }
 
 // ---- arm-at-boot dropdown ("Manual arm" + a target OS) -------------------
@@ -657,7 +662,7 @@ $('wifiClear').onclick = async () => {
   await sendCmd('__WIFICLR__'); setTimeout(() => sendCmd('__WIFIST__'), 500);
 };
 $('otaRun').onclick = async () => {
-  if (!rxCh || busy || !confirm('Reboot and update to the latest firmware over WiFi, then boot into it? The board will disconnect — watch its screen for progress. Keep it powered.')) return;
+  if (!rxCh || busy || !confirm('Reboot and update to the latest firmware' + (latestVer ? ' (v' + latestVer + ')' : '') + ' over WiFi, then boot into it? The board will disconnect — watch its screen for progress. Keep it powered.')) return;
   busy = true; $('otaRun').disabled = true; $('otaStat').textContent = 'rebooting to update — watch the board screen…';
   // Reboot-to-fetch: the board disconnects. Auto-reload so the next connect gets a
   // FRESH GATT (Chrome caches a stale handle across the reboot -> writes no-op).
@@ -665,7 +670,10 @@ $('otaRun').onclick = async () => {
   catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaRun').disabled = false; }
 };
 if ($('otaSwitch')) $('otaSwitch').onclick = async () => {
-  if (!rxCh || busy || !confirm('Reboot and flash BBoink into the spare slot, then boot into it? Needs saved WiFi. The board will disconnect — watch its screen for progress. Keep it powered.')) return;
+  if (!rxCh || busy) return;
+  let sv = '';   // fetch the sibling's latest tag so the confirm shows what you're switching to
+  try { const r = await fetch('https://api.github.com/repos/whitewhidow/bboink/releases/latest', { cache: 'no-store' }); const j = await r.json(); if (j.tag_name) sv = ' ' + j.tag_name; } catch (e) {}
+  if (!confirm('Reboot and flash BBoink' + sv + ' into the spare slot, then boot into it? Needs saved WiFi. The board will disconnect — watch its screen for progress. Keep it powered.')) return;
   busy = true; $('otaSwitch').disabled = true; $('otaStat').textContent = 'rebooting to switch — watch the board screen…';
   try { await sendCmd('__OTASWITCH__'); setTimeout(() => location.reload(), 2500); }   // fresh GATT after reboot
   catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaSwitch').disabled = false; }
