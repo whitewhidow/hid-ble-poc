@@ -11,7 +11,7 @@
 #  endif
 #endif
 
-#define POC_VERSION "1.1.3"
+#define POC_VERSION "1.1.4"
 
 // Companion Web-Bluetooth console (GitHub Pages) — shown on the boot splash so you
 // know where to connect from a phone/PC. Same page for every board.
