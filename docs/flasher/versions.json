@@ -14,10 +14,15 @@
       "env": "headless",
       "name": "Generic ESP32-S3 (headless, no display)",
       "chipFamily": "ESP32-S3"
+    },
+    {
+      "env": "cardputer",
+      "name": "M5Cardputer ADV",
+      "chipFamily": "ESP32-S3"
     }
   ],
   "versions": [
-    "v1.1.1",
-    "v1.1.0"
+    "v1.1.2",
+    "v1.1.1"
   ]
 }
