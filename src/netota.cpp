@@ -19,6 +19,12 @@ static void loadCreds() {
     s_ssid = s_prefs.getString("ssid", "");
     s_pass = s_prefs.getString("pass", "");
     s_prefs.end();
+#if defined(DEV_WIFI_SSID)
+    // Local dev builds: fall back to the gitignored dev_secrets WiFi when nothing is
+    // saved on-device, so a freshly-flashed PoC can already self-update / switch
+    // firmware without hand-entering creds (mirrors BBoink). Release bins have none.
+    if (!s_ssid.length() && DEV_WIFI_SSID[0]) { s_ssid = DEV_WIFI_SSID; s_pass = DEV_WIFI_PASS; }
+#endif
 }
 
 void netBegin() { loadCreds(); }        // load creds only — NO auto-connect; the web triggers it
