@@ -17,12 +17,13 @@ flags and sharing one firmware:
 |-----|-------|-----|---------|-------|
 | `tembed`   | LilyGo T-Embed CC1101 | ST7789 320×170 | yes (BQ27220) | encoder button |
 | `tdongle`  | LilyGo T-Dongle S3    | ST7735S 80×160 | no | plugs straight into USB-A · verified on hardware (smaller per-board UI metrics; menu drops **Sleep** since it's USB-powered) |
+| `cardputer` | M5Cardputer ADV (StampS3, 8 MB) | ST7789 240×135 | yes (GPIO10 ×2) | verified on hardware · in the BBoink/BBportal switch mesh · USB flash needs manual download mode (hold **G0**, tap **RESET**) as it runs native USB-HID |
 | `headless` | Generic ESP32-S3 module (8 MB, no PSRAM) | none | no | **no display, no button** — the phone portal is the entire UI. USB-HID + BLE-HID + BLE control all work; 8 MB A/B partition so WiFi self-update works. Verified on hardware. Reflash needs manual download mode (GPIO0→GND while plugging, no BOOT button). |
 
 - `POC_BOARD_*` picks display pins/panel + button; `POC_HAS_USB_HID` gates the USB side.
 - `display.cpp` parameterises panel type/size/offsets/frequency per board — or **no-ops entirely** on `headless` (null display; the BLE portal is the UI).
 - Shared `ble_hid.cpp` (NimBLE 2.x HID keyboard **+** a custom control service).
-- The **firmware switch** to [BBoink](https://github.com/whitewhidow/bboink) is only on `tembed`/`tdongle` (boards with a BBoink counterpart + matching 16 MB layout); it no-ops on `headless`.
+- The **firmware switch** to [BBoink](https://github.com/whitewhidow/bboink) / [BBportal](https://github.com/whitewhidow/bb-portal) is on the S3 mesh boards `tembed`/`tdongle`/`cardputer` (each has counterpart builds + a shared A/B partition layout); it no-ops on `headless`.
 
 ## What it does
 
@@ -39,7 +40,7 @@ flags and sharing one firmware:
   (see the control page below).
 - **Graphical boot splash** (version + board; skippable in Options, and auto-skipped
   when arming at boot). The **status bar** shows PC/PH/USB links, AUTORUN (`A`/`M`),
-  arm-at-boot (`AB` + the target-OS letter when on), and a **battery gauge** (T-Embed).
+  arm-at-boot (`AB` + the target-OS letter when on), and a **battery gauge** (T-Embed + Cardputer).
 - **AUTORUN** (arm on select → auto-fire on plug) and **arm-at-boot** (headless) are
   runtime NVS settings, set from the phone — no reflash.
 
@@ -69,7 +70,7 @@ Connect to `PoC-KBD`; a unified header shows the connection, firmware version, a
 **No toolchain?** Use the browser **[web flasher](https://whitewhidow.github.io/hid-ble-poc/flasher/)**
 (Chrome/Edge desktop, Web Serial) — pick your board + version and Install. It flashes the
 merged image (bootloader + partitions + app) over USB. Put the board in download mode first
-(T-Embed: hold BOOT + tap RESET; T-Dongle: hold button while plugging; headless: GPIO0→GND).
+(T-Embed: hold BOOT + tap RESET; T-Dongle: hold button while plugging; Cardputer: hold G0 + tap RESET; headless: GPIO0→GND).
 
 From source:
 
