@@ -70,7 +70,8 @@ static bool armed = false; static int armedIdx = 0; static bool wasMounted = fal
 static uint32_t fireAt = 0;                                    // fire this long after a plug (host settle)
 #endif
 
-// Battery %: BQ27220 fuel gauge over I2C (T-Embed only), cached ~10s. -1 = none.
+// Battery %: BQ27220 fuel gauge over I2C (T-Embed only), cached ~10s. Boards with no
+// gauge report 100 ("powered/full"), matching the boilerplate convention.
 #if defined(POC_BOARD_TEMBED)
 static int batteryPct() {
     static int cached = -1; static uint32_t last = 0; static bool probed = false, present = false;
@@ -86,7 +87,7 @@ static int batteryPct() {
     return cached;
 }
 #else
-static int batteryPct() { return -1; }
+static int batteryPct() { return 100; }   // no gauge on this board -> powered/full (like the boilerplate)
 #endif
 
 int         pocBatteryPct() { return batteryPct(); }   // exposed to ble_hid for the portal header
