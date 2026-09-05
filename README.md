@@ -132,6 +132,12 @@ publishes `hid-ble-poc-app-<board>.bin` to the GitHub release; the board pulls
 the firmware `.bin` (+ `bootloader.bin`, `partitions.bin`, `.elf`) and the
 **LittleFS image** as artifacts — a prebuilt image without a local toolchain.
 
+## Getting help
+
+Questions, bugs, or stuck on setup? **Please open a GitHub issue** — that's the place to
+ask for help: <https://github.com/whitewhidow/hid-ble-poc/issues>. Include your board,
+firmware version, and what you tried.
+
 ---
 
 Educational PoC — use only on hardware and hosts you own.
