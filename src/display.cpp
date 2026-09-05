@@ -142,7 +142,13 @@ public:
         { auto c = _panel.config();
           c.pin_cs = PIN_CS; c.pin_rst = PIN_RST; c.pin_busy = -1;
           c.panel_width = PANEL_W; c.panel_height = PANEL_H; c.offset_x = OFFX; c.offset_y = OFFY; c.offset_rotation = 0;
-          c.readable = false; c.invert = true; c.rgb_order = false; c.bus_shared = true;
+          c.readable = false; c.invert = true; c.rgb_order = false;
+#if defined(POC_BOARD_CARDPUTER)
+          c.bus_shared = false;   // Cardputer panel is on a DEDICATED SPI3 bus (matches the
+                                  // working boilerplate); bus_shared=true here leaves it black.
+#else
+          c.bus_shared = true;    // T-Embed/T-Dongle share the panel SPI with CC1101/SD/etc.
+#endif
           _panel.config(c); }
         { auto c = _light.config(); c.pin_bl = PIN_BL; c.invert = false; c.freq = 44100; c.pwm_channel = 7;
           _light.config(c); _panel.setLight(&_light); }
