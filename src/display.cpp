@@ -136,7 +136,10 @@ class LGFX_Poc : public lgfx::LGFX_Device {
 public:
     LGFX_Poc() {
         { auto c = _bus.config();
-          c.spi_host = PANEL_SPI_HOST; c.spi_mode = 0; c.freq_write = PANEL_FREQ; c.freq_read = 16000000;
+          c.spi_host = PANEL_SPI_HOST; c.spi_mode = 0; c.freq_write = PANEL_FREQ;
+#if !defined(POC_BOARD_CARDPUTER)
+          c.freq_read = 16000000;
+#endif
           c.pin_sclk = PIN_SCLK; c.pin_mosi = PIN_MOSI; c.pin_miso = PIN_MISO; c.pin_dc = PIN_DC;
           _bus.config(c); _panel.setBus(&_bus); }
         { auto c = _panel.config();
@@ -150,7 +153,12 @@ public:
           c.bus_shared = true;    // T-Embed/T-Dongle share the panel SPI with CC1101/SD/etc.
 #endif
           _panel.config(c); }
-        { auto c = _light.config(); c.pin_bl = PIN_BL; c.invert = false; c.freq = 44100; c.pwm_channel = 7;
+        { auto c = _light.config(); c.pin_bl = PIN_BL;
+#if !defined(POC_BOARD_CARDPUTER)
+          c.invert = false; c.freq = 44100; c.pwm_channel = 7;   // T-Embed/T-Dongle tuning
+#endif
+          // Cardputer: leave the backlight PWM at LovyanGFX defaults (matches the
+          // working boilerplate; a forced channel/freq here left it dark).
           _light.config(c); _panel.setLight(&_light); }
         setPanel(&_panel);
     }
@@ -256,7 +264,7 @@ void dispSplash(const char* version, const char* board) {
     // subtitle + accent underline
     lcd.setTextSize(big ? 2 : 1);
     lcd.setTextColor(mag); lcd.drawString("USB >> BLE HID", W / 2, H / 2 + (big ? 30 : 14));
-    if (big) { int uw = (int)(W * 0.5); lcd.fillRect((W - uw) / 2, H / 2 + 46, uw, 2, cyan); } // underline: big screens only (no room on the 80px T-Dongle)
+    if (big && H >= 160) { int uw = (int)(W * 0.5); lcd.fillRect((W - uw) / 2, H / 2 + 46, uw, 2, cyan); } // underline: tall big screens only (would land on the URL on the short 135px Cardputer)
     // footer: version + board
     lcd.setTextSize(1); lcd.setTextColor(dim);
     char f[48]; snprintf(f, sizeof(f), "v%s  -  %s", version, board);
