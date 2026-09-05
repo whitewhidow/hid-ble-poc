@@ -48,8 +48,30 @@ void dispCmd(const char*, const char*) {}
   #define OFFY     1
   #define PANEL_FREQ 27000000
   #define PANEL_ST7735
+#elif defined(POC_BOARD_CARDPUTER)
+  // M5Cardputer ADV — StampS3, ST7789 135x240 (landscape 240x135). Panel on SPI3.
+  #define PIN_SCLK 36
+  #define PIN_MOSI 35
+  #define PIN_MISO -1
+  #define PIN_CS   37
+  #define PIN_DC   34
+  #define PIN_RST  33
+  #define PIN_BL   38
+  #define PANEL_W  135
+  #define PANEL_H  240
+  #define OFFX     52
+  #define OFFY     40
+  #define PANEL_FREQ 40000000
+  #define PANEL_SPI3
 #else
-  #error "define POC_BOARD_TEMBED or POC_BOARD_TDONGLE"
+  #error "define POC_BOARD_TEMBED, POC_BOARD_TDONGLE or POC_BOARD_CARDPUTER"
+#endif
+
+// Most boards wire the panel to SPI2_HOST; the Cardputer uses SPI3_HOST.
+#if defined(PANEL_SPI3)
+  #define PANEL_SPI_HOST SPI3_HOST
+#else
+  #define PANEL_SPI_HOST SPI2_HOST
 #endif
 
 #if defined(PANEL_ST7735)
@@ -74,6 +96,22 @@ void dispCmd(const char*, const char*) {}
   #define UI_CTR_TY   4      // dispCenter title y
   #define UI_CTR_BY   24     // dispCenter body start y
   #define UI_CTR_DY   11     // dispCenter line spacing
+#elif defined(POC_BOARD_CARDPUTER)
+  // Cardputer landscape ~240x135 — between the T-Dongle and T-Embed; all 6 menu
+  // rows must clear the status bar within 135px tall.
+  #define UI_TS_TITLE 2
+  #define UI_TS_BODY  1
+  #define UI_PAD      6
+  #define UI_TITLE_Y  4
+  #define UI_BODY_Y   30
+  #define UI_MENU_Y0  26
+  #define UI_MENU_DY  15
+  #define UI_MENU_LX  18
+  #define UI_BAR_TS   1
+  #define UI_BAR_H    14
+  #define UI_CTR_TY   6
+  #define UI_CTR_BY   34
+  #define UI_CTR_DY   14
 #else  // POC_BOARD_TEMBED
   #define UI_TS_TITLE 3
   #define UI_TS_BODY  2
@@ -97,7 +135,7 @@ class LGFX_Poc : public lgfx::LGFX_Device {
 public:
     LGFX_Poc() {
         { auto c = _bus.config();
-          c.spi_host = SPI2_HOST; c.spi_mode = 0; c.freq_write = PANEL_FREQ; c.freq_read = 16000000;
+          c.spi_host = PANEL_SPI_HOST; c.spi_mode = 0; c.freq_write = PANEL_FREQ; c.freq_read = 16000000;
           c.pin_sclk = PIN_SCLK; c.pin_mosi = PIN_MOSI; c.pin_miso = PIN_MISO; c.pin_dc = PIN_DC;
           _bus.config(c); _panel.setBus(&_bus); }
         { auto c = _panel.config();
@@ -115,7 +153,7 @@ static LGFX_Poc lcd;
 
 void dispBegin() {
     lcd.init();
-#if defined(POC_BOARD_TDONGLE)
+#if defined(POC_BOARD_TDONGLE) || defined(POC_BOARD_CARDPUTER)
     lcd.setRotation(1);              // landscape
 #else
     lcd.setRotation(3);              // T-Embed: landscape, flipped 180

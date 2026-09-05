@@ -28,8 +28,8 @@ jobs:
       - name: Build + package bins (app-only + merged)
         run: |
           set -e
-          declare -A SIZE=( [tembed]=16MB [tdongle]=16MB [headless]=8MB )
-          for env in tembed tdongle headless; do
+          declare -A SIZE=( [tembed]=16MB [tdongle]=16MB [headless]=8MB [cardputer]=8MB )
+          for env in tembed tdongle headless cardputer; do
             pio run -e "$env"
             # boot_app0 only exists after the framework is installed by the first build
             BA=$(find ~/.platformio/packages -name boot_app0.bin -path '*framework-arduinoespressif32*' | head -1)
@@ -49,6 +49,7 @@ jobs:
             hid-ble-poc-tembed.bin
             hid-ble-poc-tdongle.bin
             hid-ble-poc-headless.bin
+            hid-ble-poc-cardputer.bin
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -57,9 +58,11 @@ jobs:
             hid-ble-poc-app-tembed.bin
             hid-ble-poc-app-tdongle.bin
             hid-ble-poc-app-headless.bin
+            hid-ble-poc-app-cardputer.bin
             hid-ble-poc-tembed.bin
             hid-ble-poc-tdongle.bin
             hid-ble-poc-headless.bin
+            hid-ble-poc-cardputer.bin
           generate_release_notes: true
 
   # Commit the merged bins into docs/flasher/fw/<tag>/ on main so the Pages web
@@ -84,7 +87,7 @@ jobs:
           set -e
           VER="${GITHUB_REF_NAME}"
           mkdir -p "docs/flasher/fw/$VER"
-          for env in tembed tdongle headless; do
+          for env in tembed tdongle headless cardputer; do
             cp "_bins/hid-ble-poc-$env.bin" "docs/flasher/fw/$VER/hid-ble-poc-$env.bin"
           done
           rm -rf _bins
@@ -98,7 +101,8 @@ jobs:
             boards: [
               {env:"tembed",   name:"LilyGo T-Embed CC1101",                   chipFamily:"ESP32-S3"},
               {env:"tdongle",  name:"LilyGo T-Dongle S3",                      chipFamily:"ESP32-S3"},
-              {env:"headless", name:"Generic ESP32-S3 (headless, no display)", chipFamily:"ESP32-S3"}
+              {env:"headless", name:"Generic ESP32-S3 (headless, no display)", chipFamily:"ESP32-S3"},
+              {env:"cardputer",name:"M5Cardputer ADV",                        chipFamily:"ESP32-S3"}
             ],
             versions: $versions
           }' > docs/flasher/versions.json

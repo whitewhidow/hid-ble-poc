@@ -25,8 +25,10 @@
 #define POC_BOARD_NAME "T-Dongle S3"
 #elif defined(POC_BOARD_HEADLESS)
 #define POC_BOARD_NAME "Headless S3"
+#elif defined(POC_BOARD_CARDPUTER)
+#define POC_BOARD_NAME "Cardputer ADV"
 #else
-#error "define POC_BOARD_TEMBED, POC_BOARD_TDONGLE or POC_BOARD_HEADLESS"
+#error "define POC_BOARD_TEMBED, POC_BOARD_TDONGLE, POC_BOARD_HEADLESS or POC_BOARD_CARDPUTER"
 #endif
 
 static const int BTN = 0;    // GPIO0: T-Embed encoder push / T-Dongle button (also BOOT)

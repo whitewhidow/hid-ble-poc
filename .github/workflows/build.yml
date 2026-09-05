@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env: [ tembed, tdongle, headless ]
+        env: [ tembed, tdongle, headless, cardputer ]
     steps:
       - uses: actions/checkout@v4
 

@@ -22,6 +22,9 @@
 #elif defined(POC_BOARD_HEADLESS)
 #define POC_OTA_URL \
     "https://github.com/whitewhidow/hid-ble-poc/releases/latest/download/hid-ble-poc-app-headless.bin"
+#elif defined(POC_BOARD_CARDPUTER)
+#define POC_OTA_URL \
+    "https://github.com/whitewhidow/hid-ble-poc/releases/latest/download/hid-ble-poc-app-cardputer.bin"
 #else
 #define POC_OTA_URL \
     "https://github.com/whitewhidow/hid-ble-poc/releases/latest/download/hid-ble-poc-app-tembed.bin"
@@ -39,6 +42,9 @@
     "https://github.com/whitewhidow/bboink/releases/latest/download/bboink-app-tdongle-s3.bin"
 #elif defined(POC_BOARD_HEADLESS)
 #define POC_OTHER_FW_URL ""                          // no BBoink build for the headless board — switch fails cleanly
+#elif defined(POC_BOARD_CARDPUTER)
+#define POC_OTHER_FW_URL \
+    "https://github.com/whitewhidow/bboink/releases/latest/download/bboink-app-cardputer-adv.bin"
 #else
 #define POC_OTHER_FW_URL \
     "https://github.com/whitewhidow/bboink/releases/latest/download/bboink-app-t-embed-cc1101.bin"
