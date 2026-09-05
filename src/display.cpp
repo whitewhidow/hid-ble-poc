@@ -1,4 +1,5 @@
 #include "display.h"
+#include "version.h"
 
 #if defined(POC_BOARD_HEADLESS)
 // Headless board (no panel): the BLE portal is the entire UI, so every display
@@ -254,6 +255,8 @@ void dispSplash(const char* version, const char* board) {
     lcd.setTextSize(1); lcd.setTextColor(dim);
     char f[48]; snprintf(f, sizeof(f), "v%s  -  %s", version, board);
     lcd.setTextDatum(bottom_center); lcd.drawString(f, W / 2, H - 3);
+    // companion page URL (fits on one line on the wide boards; skip the 80px dongle)
+    if (big) { lcd.setTextColor(cyan); lcd.drawString(POC_PAGE_URL, W / 2, H - 16); }
     lcd.setTextDatum(top_left);
 }
 

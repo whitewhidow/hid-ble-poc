@@ -13,6 +13,10 @@
 
 #define POC_VERSION "1.1.1"
 
+// Companion Web-Bluetooth console (GitHub Pages) — shown on the boot splash so you
+// know where to connect from a phone/PC. Same page for every board.
+#define POC_PAGE_URL "whitewhidow.github.io/hid-ble-poc/"
+
 // App-only image (firmware.bin) published by CI on a tag. The in-app updater
 // downloads this over WiFi and writes it to the spare OTA slot. Each board pulls
 // its own asset (different LCD/pins -> different binary).
