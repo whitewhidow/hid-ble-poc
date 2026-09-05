@@ -6,7 +6,8 @@
 #include "usb_hid.h"   // pocFsRead / pocFsWrite* — edit the payload files over BLE
 #include "consumer_keys.h"   // media/consumer usage table (shared with USB)
 #include "netota.h"    // WiFi provisioning + in-app OTA self-update
-#include "version.h"   // POC_OTA_URL / POC_OTHER_FW_URL (firmware switch)
+#include "version.h"   // POC_OTA_URL (self-update)
+#include "switch_targets.h"  // SWITCH_TARGETS[] (multi-target firmware switch)
 #include <WiFi.h>      // WiFi.status() for the transport indicators
 #include "display.h"   // OTA progress on the LCD
 #include <Arduino.h>
@@ -14,6 +15,7 @@
 #include <NimBLEDevice.h>
 
 extern void pocRequestFwFetch(bool self);   // main.cpp: flag a reboot-to-fetch (self/switch)
+extern void pocRequestSwitch(int idx);      // main.cpp: switch to SWITCH_TARGETS[idx]
 extern int         pocBatteryPct();          // main.cpp: battery % (-1 = none) for the portal header
 extern const char* pocBoardName();           // main.cpp: board display name for the portal header
 #include <NimBLEHIDDevice.h>
@@ -521,11 +523,22 @@ static void handleCmd(const char* cmd) {
         ctrlNotify("ota:0 rebooting to update — watch the board");
         delay(400);
         pocRequestFwFetch(true);        // self-update; sets the RTC flag + restarts
+    } else if (!strcmp(cmd, "__SWITCHLIST__")) {
+        // Sibling firmwares available for this board (portal renders the picker).
+        String s = "sw:";
+        for (int i = 0; i < SWITCH_TARGET_COUNT; i++) { if (i) s += "|"; s += SWITCH_TARGETS[i].name; }
+        ctrlNotify(s.c_str());
+    } else if (!strncmp(cmd, "__SWITCH__:", 11)) {   // "__SWITCH__:<idx>" -> sibling firmware
+        int idx = atoi(cmd + 11);
+        if (idx >= 0 && idx < SWITCH_TARGET_COUNT) {
+            ctrlNotify((String("ota:0 switching to ") + SWITCH_TARGETS[idx].name + " — watch the board").c_str());
+            delay(400); pocRequestSwitch(idx);       // restarts (never returns)
+        } else ctrlNotify("err:no such switch target");
     } else if (!strcmp(cmd, "__OTASWITCH__")) {
-        // Same path, sibling firmware target.
+        // Legacy single-target alias (old portals) -> first sibling.
         ctrlNotify("ota:0 rebooting to switch — watch the board");
         delay(400);
-        pocRequestFwFetch(false);       // switch to sibling; restarts (never returns)
+        pocRequestSwitch(0);            // switch to first sibling; restarts (never returns)
     } else if (!strcmp(cmd, "__AUTOGET__")) {
         ctrlNotify(bleAutorun() ? "autorun:1" : "autorun:0");
     } else if (!strncmp(cmd, "__AUTORUN__:", 12)) {

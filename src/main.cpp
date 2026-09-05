@@ -17,6 +17,7 @@
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
 #include "esp_mac.h"                 // distinct BLE base MAC per firmware (GATT-cache fix)
+#include "switch_targets.h"          // multi-target firmware switch list (BBoink / BBportal)
 
 #if defined(POC_BOARD_TEMBED)
 #define POC_BOARD_NAME "T-Embed CC1101"
@@ -176,6 +177,7 @@ static void selectOS(int menuIdx) {
 #define POC_FETCH_SELF   0x5757C0D1u
 #define POC_FETCH_SWITCH 0x5757C0D2u
 RTC_NOINIT_ATTR uint32_t bootFwFetch;
+RTC_NOINIT_ATTR int32_t  bootSwitchIdx;   // which SWITCH_TARGETS[] entry (for a SWITCH fetch)
 // Unified reboot-to-fetch screen (identical wording/structure in BBoink): header
 // "FIRMWARE", a center phase line, and the target ("-> BBoink"/"-> latest") pinned
 // at the bottom throughout.
@@ -191,6 +193,8 @@ static void switchProgress(int pct, const char* msg) {
 }
 // Called from the BLE control service: request a fetch on the next boot.
 void pocRequestFwFetch(bool self) { bootFwFetch = self ? POC_FETCH_SELF : POC_FETCH_SWITCH; delay(200); ESP.restart(); }
+// Switch to a specific sibling (index into SWITCH_TARGETS[]).
+void pocRequestSwitch(int idx) { bootSwitchIdx = idx; bootFwFetch = POC_FETCH_SWITCH; delay(200); ESP.restart(); }
 
 void setup() {
     // Distinct BLE identity per firmware (shared fix with BBoink): derive the base
@@ -216,9 +220,13 @@ void setup() {
     // (safe on no-PSRAM). Progress on the LCD; the portal has disconnected.
     if (bootFwFetch == POC_FETCH_SELF || bootFwFetch == POC_FETCH_SWITCH) {
         bool self = (bootFwFetch == POC_FETCH_SELF);
-        const char* url = self ? POC_OTA_URL : POC_OTHER_FW_URL;
+        const char* url   = POC_OTA_URL;
+        const char* tname = "latest";
+        if (!self && bootSwitchIdx >= 0 && bootSwitchIdx < SWITCH_TARGET_COUNT) {
+            url = SWITCH_TARGETS[bootSwitchIdx].url; tname = SWITCH_TARGETS[bootSwitchIdx].name;
+        }
         bootFwFetch = 0;
-        snprintf(g_fwTarget, sizeof(g_fwTarget), "-> %s", self ? "latest" : POC_OTHER_FW_NAME);
+        snprintf(g_fwTarget, sizeof(g_fwTarget), "-> %s", tname);
         fwScreen("connecting wifi", 0x22D3E0);
         netBegin(); netConnect();
         uint32_t t0 = millis();

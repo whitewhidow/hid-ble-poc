@@ -205,11 +205,9 @@
 
     <div id="switchSection" hidden>
       <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px">Switch firmware</div>
-      <div class="row">
-        <span class="sub" style="flex:1;margin:0">Reboots and flashes <b>BBoink</b> into the spare slot, then boots into it — <b>watch the board screen</b> for progress (16 MB boards).</span>
-        <button id="otaSwitch" class="warn">Switch to BBoink</button>
-      </div>
-      <div class="sub" style="margin:4px 0 0">Same as an update, but pulls the sibling firmware. Whatever you boot becomes the default (persists across replugs). Come back the same way from BBoink's own Switch button.</div>
+      <div class="sub" style="margin:0 0 6px">Reboots and flashes a sibling app into the spare slot, then boots into it — <b>watch the board screen</b> (16 MB boards). NVS config carries over; on-board files do not. Come back the same way from that firmware's own Switch list.</div>
+      <div id="switchList"></div>
+      <div id="switchMsg" class="sub" style="margin:6px 0 0"></div>
     </div>
   </section>
 
@@ -395,6 +393,7 @@ $('connect').onclick = async () => {
       if (waiter && waiter.match(v)) { waiter.resolve(v); return; }
       if (v.startsWith('wifi:')) { renderWifi(v); return; }
       if (v.startsWith('ota:'))  { renderOta(v);  return; }
+      if (v.startsWith('sw:'))   { renderSwitch(v.slice(3)); return; }
       if (v.startsWith('autorun:')) { $('autorun').value = v.slice(8); return; }
       if (v.startsWith('armboot:')) { armOn = (v.slice(8) === '1'); updateArmSel(); return; }
       if (v.startsWith('splash:'))  { $('splash').checked = (v.slice(7) === '1'); return; }
@@ -449,9 +448,26 @@ for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
 (() => { let n = 0, t0 = 0; const h = document.querySelector('h1');
   if (h) { h.style.cursor = 'pointer'; h.onclick = () => { const now = Date.now();
     n = (now - t0 < 1500) ? n + 1 : 1; t0 = now;
-    if (n >= 3) { const s = $('switchSection'); if (s) s.hidden = false; n = 0; }
+    if (n >= 3) { const s = $('switchSection'); if (s) { s.hidden = false; if ($('switchMsg')) $('switchMsg').textContent = 'loading…'; try { sendCmd('__SWITCHLIST__'); } catch(e){} } n = 0; }
   }; }
 })();
+
+// Render the sibling-firmware picker from a "sw:Name0|Name1" list.
+function renderSwitch(csv) {
+  const names = csv ? csv.split('|').filter(x => x.length) : [];
+  const list = $('switchList'), msg = $('switchMsg');
+  if (!list) return;
+  if (!names.length) { list.innerHTML = ''; if (msg) msg.textContent = 'No switch targets for this board.'; return; }
+  if (msg) msg.textContent = '';
+  list.innerHTML = names.map((nm, i) => `<button class="warn swbtn" data-i="${i}" style="width:100%;margin-top:8px">Switch to ${nm}</button>`).join('');
+  for (const b of list.querySelectorAll('.swbtn')) b.onclick = async () => {
+    const i = +b.dataset.i, nm = names[i];
+    if (!confirm('Switch this board to ' + nm + '?\n\nIt reboots, downloads ' + nm + ' over WiFi, and boots it. NVS config carries over; on-board files do not.')) return;
+    if (msg) msg.textContent = 'switching to ' + nm + ' — watch the board screen…';
+    try { await sendCmd('__SWITCH__:' + i); setTimeout(() => location.reload(), 2500); }
+    catch (e) { if (msg) msg.textContent = '✖ ' + e.message; }
+  };
+}
 
 // ---- transport status (st:ble=1:usb=0:wifi=0) — colour the labels ---------
 function renderStatus(v){
@@ -676,15 +692,7 @@ $('otaRun').onclick = async () => {
   try { await sendCmd('__OTA__'); setTimeout(() => location.reload(), 2500); }
   catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaRun').disabled = false; }
 };
-if ($('otaSwitch')) $('otaSwitch').onclick = async () => {
-  if (!rxCh || busy) return;
-  let sv = '';   // fetch the sibling's latest tag so the confirm shows what you're switching to
-  try { const r = await fetch('https://api.github.com/repos/whitewhidow/bboink/releases/latest', { cache: 'no-store' }); const j = await r.json(); if (j.tag_name) sv = ' ' + j.tag_name; } catch (e) {}
-  if (!confirm('Reboot and flash BBoink' + sv + ' into the spare slot, then boot into it? Needs saved WiFi. The board will disconnect — watch its screen for progress. Keep it powered.')) return;
-  busy = true; $('otaSwitch').disabled = true; $('otaStat').textContent = 'rebooting to switch — watch the board screen…';
-  try { await sendCmd('__OTASWITCH__'); setTimeout(() => location.reload(), 2500); }   // fresh GATT after reboot
-  catch (e) { $('otaStat').textContent = '✖ ' + e.message; busy = false; $('otaSwitch').disabled = false; }
-};
+// (firmware switch is now the multi-target picker rendered by renderSwitch())
 $('list').onclick = () => sendCmd('__BONDS__');
 $('drop').onclick = async () => { if (confirm('Disconnect all current BLE links?')) await sendCmd('__DROP__'); };
 
