@@ -155,6 +155,10 @@
 
     <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 8px">OS slots — which payload the board fires</div>
     <div id="slotrows"></div>
+    <div class="row" style="margin-top:8px">
+      <span id="defstat" class="sub" style="flex:1;margin:0"></span>
+      <button id="restoredef" class="sec">Restore defaults</button>
+    </div>
 
     <div style="font-weight:600;color:#8a97a2;font-size:12px;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 8px">Fire a slot payload</div>
     <div class="row" style="align-items:center;gap:10px">
@@ -817,6 +821,13 @@ $('pllist').onchange = () => { const n = $('pllist').value; if (n) loadLib(n); }
 $('plnew').onclick = newLib;
 $('pldel').onclick = delLib;
 $('plsave').onclick = saveLib;
+$('restoredef').onclick = async () => {
+  if (!$('restoredef')) return;
+  if (!confirm('Restore the Linux / Windows / macOS payloads to their built-in defaults?\n\nThis overwrites your edits in those three slots.')) return;
+  $('defstat').textContent = 'restoring…';
+  try { await sendCmd('__RESTOREDEF__'); $('defstat').textContent = '✔ restored — reload a slot to see it'; }
+  catch (e) { $('defstat').textContent = '✖ ' + e.message; }
+};
 </script>
 </body>
 </html>

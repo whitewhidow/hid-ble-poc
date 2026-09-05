@@ -716,6 +716,9 @@ static void handleCmd(const char* cmd) {
             if (pocFsRead(slot, c)) { char b[40]; snprintf(b, sizeof(b), "ble: firing %s", slot); ctrlNotify(b); bleHidRun(c.c_str()); }
             else ctrlNotify("ble: empty slot");
         }
+    } else if (!strcmp(cmd, "__RESTOREDEF__")) {   // force the 3 OS slots back to built-in defaults
+        pocRestoreDefaults();
+        ctrlNotify("def:restored");
     } else if (!strcmp(cmd, "__PLLIST__")) {
         String l = pocLibList(); l.replace("\n", ",");
         if (l.endsWith(",")) l.remove(l.length() - 1);

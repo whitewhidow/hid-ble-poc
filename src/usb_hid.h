@@ -11,6 +11,7 @@ int  usbHidProtocol();  // USB HID protocol: 0=boot, 1=report, -1=not mounted (a
 // POC_HAS_USB_HID (LittleFS present); stubbed to false on the C5 (no FS).
 // `os` is one of "linux" / "windows" / "macos" -> /<os>.txt.
 bool pocFsRead(const char* os, String& out);          // read whole file into out
+void pocRestoreDefaults();                            // force-restore the 3 OS slots to built-in defaults
 bool pocFsWriteBegin(const char* os);                 // open for write (truncate)
 bool pocFsWriteChunk(const uint8_t* data, size_t n);  // append bytes to the open file
 bool pocFsWriteEnd(size_t& sizeOut);                  // close; sizeOut = bytes written

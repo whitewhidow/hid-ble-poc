@@ -8,6 +8,7 @@
 void usbHidBegin() { /* no USB HID on this chip */ }
 // No LittleFS payloads on this board -> editing is unavailable.
 bool pocFsRead(const char*, String&)        { return false; }
+void pocRestoreDefaults()                   {}   // no payloads on this board
 bool pocFsWriteBegin(const char*)           { return false; }
 bool pocFsWriteChunk(const uint8_t*, size_t){ return false; }
 bool pocFsWriteEnd(size_t&)                 { return false; }
@@ -435,5 +436,15 @@ void usbHidBegin() {
     ConsumerControl.begin();
     Mouse.begin();
     SysControl.begin();
+}
+// Manual "restore defaults": force-overwrite the 3 OS slots with the built-in
+// defaults (seedPayload only fills EMPTY slots; this replaces whatever's there).
+void pocRestoreDefaults() {
+    LittleFS.begin(true, "/littlefs", 10, "littlefs");
+    const int oses[] = { POC_OS_LINUX, POC_OS_WINDOWS, POC_OS_MACOS };
+    for (int i = 0; i < 3; i++) {
+        File f = LittleFS.open(osPath(oses[i]), "w");
+        if (f) { f.print(defaultPayload(oses[i])); f.close(); }
+    }
 }
 #endif // POC_HAS_USB_HID
