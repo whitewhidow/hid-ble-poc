@@ -447,9 +447,9 @@ for (const t of document.querySelectorAll('.tab')) t.onclick = () => {
   if (t.dataset.tab === 'payloads') refreshLib();
 };
 
-// Hidden "developer" unlock: tap the title 3x (quickly) to reveal the firmware-
-// switch action in the Update tab. Kept out of sight for normal users.
-(() => { let n = 0, t0 = 0; const h = document.querySelector('h1');
+// Hidden "developer" unlock: tap the board-name chip 3x (quickly) to reveal the
+// firmware-switch action in the Update tab. Kept out of sight for normal users.
+(() => { let n = 0, t0 = 0; const h = $('hdrboard');
   if (h) { h.style.cursor = 'pointer'; h.onclick = () => { const now = Date.now();
     n = (now - t0 < 1500) ? n + 1 : 1; t0 = now;
     if (n >= 3) { const s = $('switchSection'); if (s) { s.hidden = false; if ($('switchMsg')) $('switchMsg').textContent = 'loading…'; try { sendCmd('__SWITCHLIST__'); } catch(e){} } n = 0; }
