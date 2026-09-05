@@ -86,6 +86,18 @@ static int batteryPct() {
     cached = (soc <= 100) ? (int)soc : -1;
     return cached;
 }
+#elif defined(POC_BOARD_CARDPUTER)
+// Cardputer ADV: battery voltage on GPIO10 through a 1:1 divider (x2). Map a Li-ion
+// window (3.30V empty .. 4.20V full) to 0..100. Verify the % on-device.
+static int batteryPct() {
+    static int cached = 100; static uint32_t last = 0; static bool first = true;
+    if (!first && millis() - last < 10000) return cached;
+    first = false; last = millis();
+    int mv  = (int)(analogReadMilliVolts(10) * 2.0f);
+    int pct = (mv - 3300) * 100 / (4200 - 3300);
+    cached = pct < 0 ? 0 : pct > 100 ? 100 : pct;
+    return cached;
+}
 #else
 static int batteryPct() { return 100; }   // no gauge on this board -> powered/full (like the boilerplate)
 #endif
