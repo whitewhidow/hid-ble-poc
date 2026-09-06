@@ -54,7 +54,7 @@
 <div id="relayConnect" style="margin-top:10px">
   <div class="sub">…or drive a board over the internet through your <b>relay</b> (no BLE range needed):</div>
   <div class="row" style="margin-top:4px;display:flex;gap:6px">
-    <input id="rcUrl" placeholder="relay URL — https://…" style="flex:2">
+    <input id="rcUrl" placeholder="relay URL — https://…" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" style="flex:2">
     <input id="rcId" placeholder="board id — bt-…" style="flex:1">
   </div>
   <div class="row" style="margin-top:4px;display:flex;gap:6px">
@@ -260,7 +260,7 @@
 
     <h3 style="margin:18px 0 6px">Remote control (relay)</h3>
     <div class="sub" style="margin:0 0 8px">Drive this board over the internet via a relay you host (see <code>relay/</code>). PSRAM boards keep BLE-HID live alongside; no-PSRAM boards drop BLE (USB-HID still types). Save WiFi creds first (WiFi tab).</div>
-    <div class="row" style="display:flex;gap:6px"><input id="rmUrl" placeholder="relay URL — https://…" style="flex:2"><input id="rmTok" placeholder="token (optional)" style="flex:1"></div>
+    <div class="row" style="display:flex;gap:6px"><input id="rmUrl" placeholder="relay URL — https://…" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" style="flex:2"><input id="rmTok" placeholder="token (optional)" style="flex:1"></div>
     <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0"><input type="checkbox" id="rmAuto" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0"><span style="flex:1">Reconnect to the relay on boot</span></label>
     <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0"><input type="checkbox" id="rmKeep" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0"><span style="flex:1">Force-keep BLE when remote (auto-kept on PSRAM boards)</span></label>
     <button id="rmGo" style="width:100%;margin-top:8px">Go remote (relay)</button>
