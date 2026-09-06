@@ -1,12 +1,17 @@
 # hid-ble-poc
 
-USB-HID → BLE-HID **pairing-bootstrap** proof-of-concept, for informational /
-educational security research on your own devices.
+**Turn an ESP32-S3 into a wireless keyboard that can type scripted keystrokes into a
+nearby computer — first over USB, then over Bluetooth once it has paired itself.** A
+proof-of-concept for informational / educational security research on hardware and
+hosts **you own**.
 
-The idea: a board acts as a **USB HID keyboard** just long enough to script the
-host into pairing the board's **own BLE HID keyboard** (Just Works), then it
-persists as a **wireless** keyboard over Bluetooth. USB is only used to bootstrap
-the pairing — after that everything is BLE.
+USB-HID → BLE-HID **pairing-bootstrap** proof-of-concept. ("HID" = Human Interface
+Device — the keyboard/mouse class.)
+
+The idea: a board acts as a **USB HID keyboard** just long enough to script the host
+into pairing the board's **own BLE HID keyboard** (using BLE's no-PIN *"Just Works"*
+pairing mode), then it persists as a **wireless** keyboard over Bluetooth. USB is only
+used to bootstrap the pairing — after that everything is BLE.
 
 ## Boards
 
@@ -35,7 +40,8 @@ flags and sharing one firmware:
 - **Payload library** (managed from the phone): keep any number of **named**
   payloads on LittleFS and **load** one into each OS **slot** (linux/windows/macos/
   custom) — the slot is what the board fires. Payload syntax is the Evil Crow "Wind"
-  set (`Print`/`STRING`/`ENTER`/`Delay`/`Gui*`/`RunWin`/…; `#`/`REM` comments).
+  set — a DuckyScript-like keystroke language (`Print`/`STRING`/`ENTER`/`Delay`/`Gui*`/
+  `RunWin`/…; `#`/`REM` comments); see the **Commands** tab in the phone page for the full list.
 - **On-screen keyboard + live typing** from the phone, over **BLE-HID or USB**
   (see the control page below).
 - **Graphical boot splash** (version + board; skippable in Options, and auto-skipped
