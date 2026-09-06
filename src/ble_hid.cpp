@@ -534,8 +534,16 @@ static void handleCmd(const char* cmd) {
             bool keep = relayGetKeep() || relayChipCanCoexist();
             if (!keep) { delay(350); bleHidStop(); }
         }
+    } else if (!strcmp(cmd, "__RELAYSCAN__")) {                                     // go remote via open-AP scan
+        if (!relayGetUrl().length()) ctrlNotify("relay:err set a Relay URL");
+        else { relayGoOpenAp(); ctrlNotify((String("relay:up ") + relayId()).c_str());
+            bool keep = relayGetKeep() || relayChipCanCoexist();
+            if (!keep) { delay(350); bleHidStop(); }
+        }
     } else if (!strcmp(cmd, "__RELAYOFF__")) {
         relayStop(); ctrlNotify("relay:off");
+    } else if (!strncmp(cmd, "__RELAYOPENAP__:", 16)) {                             // find-open-AP-on-boot toggle
+        relaySetOpenAp(cmd[16] == '1'); ctrlNotify(cmd[16] == '1' ? "relayopenap:1" : "relayopenap:0");
     } else if (!strncmp(cmd, "__RELAYAUTO__:", 14)) {                               // connect-on-boot toggle
         relaySetAuto(cmd[14] == '1'); ctrlNotify(cmd[14] == '1' ? "relayauto:1" : "relayauto:0");
     } else if (!strncmp(cmd, "__RELAYKEEP__:", 14)) {                              // force-keep-BLE toggle
@@ -545,7 +553,7 @@ static void handleCmd(const char* cmd) {
         relaySaveCreds(bar < 0 ? a : a.substring(0, bar), bar < 0 ? String() : a.substring(bar + 1));
         ctrlNotify("relayset:ok");
     } else if (!strcmp(cmd, "__RELAYCFG__")) {                                      // portal loads current relay settings
-        ctrlNotify((String("relaycfg:") + relayGetUrl() + "|" + (relayGetAuto() ? "1" : "0") + "|" + (relayGetKeep() ? "1" : "0") + "|" + relayGetToken()).c_str());
+        ctrlNotify((String("relaycfg:") + relayGetUrl() + "|" + (relayGetAuto() ? "1" : "0") + "|" + (relayGetKeep() ? "1" : "0") + "|" + relayGetToken() + "|" + (relayGetOpenAp() ? "1" : "0")).c_str());
     } else if (!strcmp(cmd, "__REBOOT__")) {                                        // remote reboot -> BLE returns
         ctrlNotify("reboot:ok"); delay(300); ESP.restart();
     } else if (!strncmp(cmd, "__WIFI__:", 9)) {
@@ -612,7 +620,7 @@ static void handleCmd(const char* cmd) {
     } else if (!strcmp(cmd, "__STATUS__")) {
         // Live transport status: ble = a PC subscribed to our BLE-HID; usb = our
         // USB device is enumerated on a host (only meaningful on the S3 boards).
-        char b[80]; snprintf(b, sizeof(b), "st:ble=%d:usb=%d:wifi=%d:proto=%d:rssi=%d:batt=%d", g_hidReady ? 1 : 0, usbHidMounted() ? 1 : 0, (WiFi.status() == WL_CONNECTED) ? 1 : 0, usbHidProtocol(), bleRssi(), pocBatteryPct());
+        char b[96]; snprintf(b, sizeof(b), "st:ble=%d:usb=%d:wifi=%d:proto=%d:rssi=%d:batt=%d:rly=%d", g_hidReady ? 1 : 0, usbHidMounted() ? 1 : 0, (WiFi.status() == WL_CONNECTED) ? 1 : 0, usbHidProtocol(), bleRssi(), pocBatteryPct(), relayState());
         ctrlNotify(b);
     } else if (!strncmp(cmd, "__BLETYPE__:", 12)) {
         bleHidType(cmd + 12);   // literal keystrokes over BLE-HID (Enter='\n', Tab='\t')

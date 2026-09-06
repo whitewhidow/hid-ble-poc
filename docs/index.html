@@ -67,6 +67,8 @@
   <span id="hdrConn" style="font-weight:600;color:#3fb950">● connected</span>
   <span style="border:1px solid #30363d;border-radius:20px;padding:2px 9px;font-size:12px;font-weight:600;color:#8b949e"><b id="hdrver" style="color:#adbac7">—</b></span>
   <span id="hdrboard" style="border:1px solid #30363d;border-radius:20px;padding:2px 9px;font-size:12px;color:#8b949e"></span>
+  <span id="hRly" hidden style="border:1px solid #30363d;border-radius:20px;padding:2px 9px;font-size:12px;font-weight:600"></span>
+  <span id="hSsid" hidden style="border:1px solid #30363d;border-radius:20px;padding:2px 9px;font-size:12px;color:#adbac7"></span>
   <span id="stBle"  style="margin-left:auto;color:#8b949e;font-weight:600">BLE-HID</span>
   <span id="stUsb"  style="color:#8b949e;font-weight:600">USB-HID</span>
   <span id="hdrbatt" style="color:#8b949e;font-weight:600"></span>
@@ -263,7 +265,10 @@
     <div class="row" style="display:flex;gap:6px"><input id="rmUrl" placeholder="relay URL — https://…" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" style="flex:2"><input id="rmTok" placeholder="token (optional)" style="flex:1"></div>
     <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0"><input type="checkbox" id="rmAuto" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0"><span style="flex:1">Reconnect to the relay on boot</span></label>
     <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0"><input type="checkbox" id="rmKeep" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0"><span style="flex:1">Force-keep BLE when remote (auto-kept on PSRAM boards)</span></label>
+    <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0"><input type="checkbox" id="rmOpenAp" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0"><span style="flex:1">Find open AP for relay (on boot; open-AP first, then saved creds)</span></label>
     <button id="rmGo" style="width:100%;margin-top:8px">Go remote (relay)</button>
+    <button id="rmScan" class="sec" style="width:100%;margin-top:6px">Find open AP + go remote</button>
+    <div class="sub" style="margin-top:2px">Scans for an open Wi-Fi that can reach the relay (skips captive portals), and falls back to your saved creds if none work.</div>
     <div id="rmMsg" class="sub" style="margin-top:4px"></div>
     <div id="rmId" class="sub" style="margin-top:4px"></div>
     <button id="rebootBtn" class="sec" style="width:100%;margin-top:10px">Reboot board</button>
@@ -418,7 +423,7 @@ function handleLine(v){
   if (v.startsWith('board:'))     { setBoard(v.slice(6)); return; }
   if (v.startsWith('mac:'))       { $('bmac').textContent = v.slice(4); return; }
   if (v.startsWith('st:'))        { renderStatus(v); return; }
-  if (v.startsWith('relaycfg:'))  { const p = v.slice(9).split('|'); if(p[0]) $('rmUrl').value = p[0]; $('rmAuto').checked = (p[1] === '1'); $('rmKeep').checked = (p[2] === '1'); if(p[3] !== undefined) $('rmTok').value = p.slice(3).join('|'); return; }
+  if (v.startsWith('relaycfg:'))  { const p = v.slice(9).split('|'); if(p[0]) $('rmUrl').value = p[0]; $('rmAuto').checked = (p[1] === '1'); $('rmKeep').checked = (p[2] === '1'); if(p[3] !== undefined) $('rmTok').value = p[3]; if($('rmOpenAp')) $('rmOpenAp').checked = (p[4] === '1'); return; }
   if (v.startsWith('relay:'))     { const e=$('rmMsg'); if(e) e.textContent = v.slice(6); return; }
   if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
 }
@@ -441,7 +446,7 @@ function startRemote(label){
   $('hdr').hidden=false; $('app').hidden=false; $('hdrConn').textContent='● '+label;
   relayPollLoop();
   sendCmd('__VER__'); setTimeout(()=>sendCmd('__STATUS__'),400); setTimeout(refreshSettings,700);
-  setInterval(()=>{ if(relay) sendCmd('__STATUS__'); }, 8000);
+  setInterval(()=>{ if(relay){ sendCmd('__STATUS__'); sendCmd('__WIFIST__'); } }, 8000);   // keep badge + SSID fresh over the relay
 }
 function showConnectScreen(msg){
   rxCh=null; relay=null; _pollOn=false; waiter=null;
@@ -542,6 +547,12 @@ function renderStatus(v){
   }
   const mb = /batt=(-?\d+)/.exec(v), be = $('hdrbatt');
   if (be && mb) { const p = +mb[1]; be.textContent = p >= 0 ? ('🔋 ' + p + '%') : ''; }   // -1 = no battery -> hide
+  // relay link badge: 0 off · 1 connecting · 2 remote(creds) · 3 scanning(blue) · 4 remote via open AP(blue)
+  const mr2 = /rly=(\d)/.exec(v), hr = $('hRly');
+  if (hr && mr2) { const n = +mr2[1];
+    const lbl = n===4?'remote (open AP)':n===2?'remote':n===3?'scanning':'connecting';
+    const col = n===4?'#5aa9ff':n===2?'#3fb950':n===3?'#5aa9ff':'#e5a94d';
+    hr.textContent = '📡 ' + lbl; hr.style.color = col; hr.hidden = (n === 0); }
 }
 
 // ---- arm-at-boot dropdown ("Manual arm" + a target OS) -------------------
@@ -713,6 +724,7 @@ function renderWifi(v){
   if (rest.includes('|')) {
     const [ssid, state, ip, ver] = rest.split('|');
     $('wifiStat').textContent = `wifi: ${ssid} — ${state}` + (ip && ip !== '-' ? ` (${ip})` : '') + `\nfirmware v${ver}`;
+    const hs = $('hSsid'); if (hs) { const on = (state === 'connected'); hs.textContent = on ? ('📶 ' + ssid) : ''; hs.hidden = !on; }
     if (ver) { $('hdrver').textContent = 'v' + ver; $('fwver').textContent = 'v' + ver; applyVerColor(); }   // fallback: version from __WIFIST__ (in case ver: was dropped)
   } else {
     $('wifiStat').textContent = 'wifi: ' + rest;
@@ -770,8 +782,28 @@ $('rmGo').onclick = async () => {
     else $('rmMsg').textContent = r;
   } catch(e) { $('rmMsg').textContent = 'failed: ' + e.message; }
 };
+// Go remote by SCANNING for an open AP that can reach the relay (falls back to saved creds on the board).
+$('rmScan').onclick = async () => {
+  const url = $('rmUrl').value.trim().replace(/\/+$/,''), tok = $('rmTok').value.trim();
+  if (!url) { $('rmMsg').textContent = 'enter a relay URL'; return; }
+  $('rmMsg').textContent = 'waking relay…';
+  try {
+    if (!await relayWake(url)) { $('rmMsg').textContent = 'relay not reachable — check the URL'; return; }
+    saveRelayCreds();   // make sure the board has the URL/token before it scans
+    sendCmd('__RELAYAUTO__:' + ($('rmAuto').checked ? '1' : '0')); await new Promise(r => setTimeout(r, 120));
+    sendCmd('__RELAYKEEP__:' + ($('rmKeep').checked ? '1' : '0')); await new Promise(r => setTimeout(r, 120));
+    $('rmMsg').textContent = 'board is scanning for an open AP…';
+    const p = waitFor(v => v.startsWith('relay:'), 8000); await sendCmd('__RELAYSCAN__'); const r = await p;
+    if (r.startsWith('relay:up')) { const id = r.slice(9).trim();
+      try { localStorage.setItem('relay-last', JSON.stringify({url,id,tok})); } catch(e){}
+      $('rcUrl').value = url; $('rcId').value = id; $('rcTok').value = tok;
+      showConnectScreen('Board is scanning for an open AP as ' + id + ' (STA blinks blue). Connect via the relay once it goes solid blue (open AP) or green (fell back to saved WiFi).'); }
+    else $('rmMsg').textContent = r;
+  } catch(e) { $('rmMsg').textContent = 'failed: ' + e.message; }
+};
 $('rmAuto').onchange = () => sendCmd('__RELAYAUTO__:' + ($('rmAuto').checked ? '1' : '0'));
 $('rmKeep').onchange = () => sendCmd('__RELAYKEEP__:' + ($('rmKeep').checked ? '1' : '0'));
+$('rmOpenAp').onchange = () => sendCmd('__RELAYOPENAP__:' + ($('rmOpenAp').checked ? '1' : '0'));
 // Autosave the relay URL/token when you finish editing (no separate Save button).
 function saveRelayCreds(){ sendCmd('__RELAYSET__:' + $('rmUrl').value.trim().replace(/\/+$/,'') + '|' + $('rmTok').value.trim()); $('rmMsg').textContent = 'relay settings saved'; }
 $('rmUrl').onchange = saveRelayCreds;

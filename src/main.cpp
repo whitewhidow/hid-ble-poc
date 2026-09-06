@@ -313,9 +313,10 @@ void loop() {
     }
 #endif
 
-    static uint32_t t = 0;
+    static uint32_t t = 0, tb = 0;
+    uint32_t iv = relayState() == 3 ? 250 : 800;   // redraw fast while scanning so the STA marker can blink
+    if (millis() - tb > iv) { tb = millis(); statusBar(); }
     if (millis() - t > 800) { t = millis();
-        statusBar();
         Serial.printf("[poc] pc=%s phone=%s conns=%d\n", bleHidConnected() ? "on" : "off", bleHidPhone() ? "on" : "off", bleHidConnCount());
     }
     delay(10);

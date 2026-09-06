@@ -299,11 +299,17 @@ void dispBle(bool pc, bool phone, bool usb, bool autorun, bool armboot, int targ
         const char* tl = targetOs == 1 ? "L" : targetOs == 2 ? "W" : targetOs == 3 ? "M" : "D"; // Linux/Win/Mac/Detect
         lcd.setTextColor(lcd.color888(0x5a, 0xA9, 0xFF), 0x000000u); lcd.print(tl);
     }
-    // STA (relay link) on the right, replacing the battery gauge: red = radio off,
-    // orange = radio on but not connected to the relay, green = connected + polling.
+    // STA (relay link) on the right, replacing the battery gauge: red = off, orange = connecting,
+    // blinking blue = scanning open APs, solid blue = online via an open AP, green = online via creds.
     (void)batt;
     int rs = relayState();
-    uint32_t sc = rs == 2 ? on : (rs == 1 ? amb : red);
+    bool blink = (millis() / 500) & 1;                               // ~1 Hz blink for the scanning state
+    uint32_t blu = lcd.color888(0x5a, 0xA9, 0xFF);
+    uint32_t sc = rs == 3 ? (blink ? blu : lcd.color888(0x1A, 0x2B, 0x40))  // blinking blue: scanning
+                : rs == 4 ? blu                                            // solid blue: online via open AP
+                : rs == 2 ? on                                             // green: online via creds
+                : rs == 1 ? amb                                            // orange: connecting
+                :           red;                                           // red: off
     lcd.setTextSize(UI_BAR_TS);
     int sw = 3 * 6 * UI_BAR_TS;                                      // "STA" ~ 3 chars
     lcd.setTextColor(sc, 0x000000u); lcd.setCursor(lcd.width() - sw - UI_PAD, y); lcd.print("STA");

@@ -14,7 +14,9 @@
 static Preferences   s_pref;
 static String        s_url, s_tok, s_id;
 static volatile bool s_active = false;
-static volatile int  s_state  = 0;             // 0 off, 1 connecting (WiFi down), 2 online (polling)
+static volatile bool s_openAp = false;         // scan open APs for one that can reach the relay
+static volatile bool s_onOpen = false;         // currently connected via an open AP (vs saved creds)
+static volatile int  s_state  = 0;             // 0 off · 1 connecting · 2 online(creds) · 3 scanning · 4 online(open AP)
 static TaskHandle_t  s_task   = nullptr;
 static QueueHandle_t s_cmdQ   = nullptr;       // task -> main loop  (pulled commands)
 static QueueHandle_t s_replyQ = nullptr;       // main loop -> task  (replies to POST)
@@ -43,6 +45,8 @@ bool   relayGetAuto()  { s_pref.begin("relay", true); bool a = s_pref.getBool("a
 void   relaySetAuto(bool on) { s_pref.begin("relay", false); s_pref.putBool("auto", on); s_pref.end(); }
 bool   relayGetKeep()  { s_pref.begin("relay", true); bool k = s_pref.getBool("keep", false); s_pref.end(); return k; }
 void   relaySetKeep(bool on) { s_pref.begin("relay", false); s_pref.putBool("keep", on); s_pref.end(); }
+bool   relayGetOpenAp()      { s_pref.begin("relay", true); bool o = s_pref.getBool("openap", false); s_pref.end(); return o; }
+void   relaySetOpenAp(bool on) { s_pref.begin("relay", false); s_pref.putBool("openap", on); s_pref.end(); }
 // Keep BLE up alongside WiFi+TLS? The S3 has enough SRAM even without PSRAM (headless verified);
 // the C5 only fits it with PSRAM (the no-PSRAM Waveshare must drop BLE — SSL alloc -32512).
 bool relayChipCanCoexist() {
@@ -86,16 +90,64 @@ void relayPostReply(const char* line) {          // queue only; the task does th
   xQueueSend(s_replyQ, &m, pdMS_TO_TICKS(4000));  // block if full — don't drop chunks of a burst (e.g. __PLGET__)
 }
 
+// Scan for OPEN APs and connect to the strongest one that can actually reach the relay (its
+// /health returns "ok"). The body check rejects captive-portal APs (they connect but return a
+// login page) and accepts a cold Render once it wakes. Returns true if we ended up online.
+static bool relayTryOpenAps() {
+  Serial.println("[relay] scanning for open APs…");
+  int n = WiFi.scanNetworks();
+  if (n <= 0) { WiFi.scanDelete(); s_onOpen = false; return false; }
+  int order[24]; int m = 0;
+  for (int i = 0; i < n && m < 24; i++) if (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) order[m++] = i;
+  for (int a = 0; a < m; a++) for (int b = a + 1; b < m; b++)                       // strongest RSSI first
+    if (WiFi.RSSI(order[b]) > WiFi.RSSI(order[a])) { int t = order[a]; order[a] = order[b]; order[b] = t; }
+  bool ok = false;
+  for (int k = 0; k < m && !ok; k++) {
+    String ssid = WiFi.SSID(order[k]);
+    Serial.printf("[relay] trying open AP '%s' (%d dBm)\n", ssid.c_str(), WiFi.RSSI(order[k]));
+    WiFi.begin(ssid.c_str());                                                       // open network, no password
+    uint32_t t0 = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 8000) vTaskDelay(pdMS_TO_TICKS(200));
+    if (WiFi.status() == WL_CONNECTED) {
+      String body;
+      if (httpDo(s_url + "/health", nullptr, &body) == 200 && body.startsWith("ok")) {
+        Serial.printf("[relay] '%s' reaches the relay — using it\n", ssid.c_str()); ok = true; break; }
+      Serial.printf("[relay] '%s' connected but no relay (captive/cold?) — next\n", ssid.c_str());
+    }
+    if (!ok) WiFi.disconnect();
+  }
+  WiFi.scanDelete();
+  s_onOpen = ok;                                  // remember HOW we're online (open AP vs creds fallback)
+  return ok;
+}
+
 static void relayTask(void*) {
   bool wasUp = false; uint32_t lastLog = 0;
   for (;;) {
     if (!s_active) { s_state = 0; wasUp = false; vTaskDelay(pdMS_TO_TICKS(400)); continue; }
     if (WiFi.status() != WL_CONNECTED) {
-      s_state = 1; wasUp = false;
-      if (millis() - lastLog > 3000) { lastLog = millis(); Serial.printf("[relay] waiting for WiFi (status=%d)\n", WiFi.status()); }
-      vTaskDelay(pdMS_TO_TICKS(500)); continue;
+      wasUp = false;
+      if (s_openAp) {
+        s_state = 3;                                    // scanning/attempting -> STA blinks BLUE
+        if (!relayTryOpenAps()) {
+          if (netHasCreds()) {                          // no open AP reached the relay -> fall back to saved creds
+            Serial.println("[relay] no open AP reachable — falling back to saved WiFi creds");
+            netConnect();
+            uint32_t t0 = millis();
+            while (WiFi.status() != WL_CONNECTED && millis() - t0 < 10000) vTaskDelay(pdMS_TO_TICKS(200));
+          }
+          if (WiFi.status() != WL_CONNECTED) vTaskDelay(pdMS_TO_TICKS(8000));   // still nothing — rescan
+        }
+      } else {
+        s_state = 1;
+        if (millis() - lastLog > 3000) { lastLog = millis(); Serial.printf("[relay] waiting for WiFi (status=%d)\n", WiFi.status()); }
+        vTaskDelay(pdMS_TO_TICKS(500));
+      }
+      continue;
     }
-    if (!wasUp) { wasUp = true; s_state = 2; Serial.printf("[relay] WiFi up, IP %s — polling %s/pull/%s\n", WiFi.localIP().toString().c_str(), s_url.c_str(), s_id.c_str()); }
+    if (!wasUp) { wasUp = true; s_state = s_onOpen ? 4 : 2;   // 4=online via open AP (solid blue), 2=via creds (green)
+      Serial.printf("[relay] WiFi up (%s), IP %s — polling %s/pull/%s\n", s_onOpen ? "open AP" : "creds",
+                    WiFi.localIP().toString().c_str(), s_url.c_str(), s_id.c_str()); }
     RelayMsg m;
     while (xQueueReceive(s_replyQ, &m, 0)) { for (int i = 0; i < 4; i++) { if (httpPostReplyOnce(s_url + "/reply/" + s_id, m.s)) break; vTaskDelay(pdMS_TO_TICKS(150)); } }
     String batch = httpPull();                     // may hold several commands joined by SEP
@@ -117,8 +169,12 @@ void relayBegin() {
   s_pref.begin("relay", true);
   s_url = s_pref.getString("url", ""); normUrl(s_url); s_tok = s_pref.getString("tok", "");
   bool a = s_pref.getBool("auto", false);
+  bool openap = s_pref.getBool("openap", false);
   s_pref.end();
-  if (a && s_url.length()) { Serial.println("[relay] auto-connect on boot"); relayGoRemote(s_url, s_tok); }
+  if (a && s_url.length()) {
+    if (openap) { Serial.println("[relay] auto-connect on boot (open-AP scan)"); relayGoOpenAp(); }
+    else { Serial.println("[relay] auto-connect on boot"); relayGoRemote(s_url, s_tok); }
+  }
 }
 
 void relaySaveCreds(const String& url, const String& token) {   // persist without connecting (autosave)
@@ -133,7 +189,23 @@ bool relayGoRemote(const String& url, const String& token) {
   s_state = 1;
   Serial.printf("[relay] go remote: %s as %s — bringing up WiFi STA\n", s_url.c_str(), s_id.c_str());
   netConnect();                                  // STA up with the saved WiFi creds
-  s_active = true;
+  s_active = true; s_openAp = false; s_onOpen = false;
+  if (!s_cmdQ)   s_cmdQ   = xQueueCreate(16, sizeof(RelayMsg));
+  if (!s_replyQ) s_replyQ = xQueueCreate(16, sizeof(RelayMsg));
+  if (!s_task)   xTaskCreatePinnedToCore(relayTask, "relay", 8192, nullptr, 1, &s_task, 0);
+  return true;
+}
+
+// Go remote by SCANNING for an open AP that can reach the relay (falls back to saved creds).
+bool relayGoOpenAp() {
+  static uint32_t lastGo = 0;                    // debounce: a double-send / re-pulled cmd must not
+  if (s_active && s_openAp && millis() - lastGo < 5000) return true;   // thrash an in-progress scan
+  lastGo = millis();
+  if (!s_url.length()) return false;
+  computeId();
+  s_state = 3; s_active = true; s_openAp = true; s_onOpen = false;
+  Serial.println("[relay] go remote via open-AP scan");
+  WiFi.mode(WIFI_STA);
   if (!s_cmdQ)   s_cmdQ   = xQueueCreate(16, sizeof(RelayMsg));
   if (!s_replyQ) s_replyQ = xQueueCreate(16, sizeof(RelayMsg));
   if (!s_task)   xTaskCreatePinnedToCore(relayTask, "relay", 8192, nullptr, 1, &s_task, 0);

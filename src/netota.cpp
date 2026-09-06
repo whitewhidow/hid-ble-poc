@@ -51,8 +51,10 @@ void netClearCreds() {
 String netStatus() {
     wl_status_t w = WiFi.status();
     const char* st = (w == WL_CONNECTED) ? "connected" : (s_ssid.length() ? "connecting" : "unset");
+    // When up, report the SSID we're ACTUALLY on — may be an open AP the relay found, not the saved creds.
+    String ssid = (w == WL_CONNECTED && WiFi.SSID().length()) ? WiFi.SSID() : s_ssid;
     String ip = (w == WL_CONNECTED) ? WiFi.localIP().toString() : String("-");
-    return String("wifi:") + (s_ssid.length() ? s_ssid : String("-")) + "|" + st + "|" + ip + "|" + POC_VERSION;
+    return String("wifi:") + (ssid.length() ? ssid : String("-")) + "|" + st + "|" + ip + "|" + POC_VERSION;
 }
 
 String netOtaUpdate(void (*cb)(int, const char*), const char* url) {
