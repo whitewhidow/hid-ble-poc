@@ -53,7 +53,14 @@ flags and sharing one firmware:
   range via a tiny relay you host: it joins WiFi and long-polls the relay for the *same*
   control commands, so the phone page runs it over the internet (TLS keep-alive + batching
   keep typing responsive). The S3 keeps BLE-HID live alongside; set the relay URL in
-  **Options → Go remote**. Handy for a headless dongle deployed somewhere and driven remotely.
+  **Options → Go remote**, or **Find open AP + go remote** to scan for an open Wi-Fi that can
+  reach the relay (it verifies `/health` so captive portals are rejected, and falls back to
+  your saved creds). The mailbox id is stable across boots (derived from the factory MAC; a
+  custom id is settable), and payload load/save + settings run over the relay with per-chunk
+  retry so a dropped reply just re-requests. The STA marker on the display shows the link
+  state (orange connecting, blinking blue scanning, solid blue on an open AP, green on saved
+  creds), and the **Board feedback** panel echoes every action and reply. Handy for a headless
+  dongle deployed somewhere and driven remotely.
 
 ## Phone control page — `docs/index.html`
 
@@ -72,7 +79,10 @@ Connect to `PoC-KBD`; a unified header shows the connection, firmware version, a
 - **Devices** — list / forget the board's BLE bonds; drop all links.
 - **WiFi / Update** — provision WiFi and self-update over the air (see below).
 - **Options** — AUTORUN (Run/Arm), arm-at-boot (Manual arm + target OS), fire /
-  type delays, and the boot-splash toggle.
+  type delays, the boot-splash toggle, and the **relay** settings (URL/token, connect-on-boot,
+  find-open-AP, force-keep-BLE, custom mailbox id) with **Go remote** / **Find open AP + go remote**.
+- **Board feedback** panel — every action you take echoes as `→` and the board's replies as `←`
+  (background polls and live typing are filtered out), so you always see whether a command took.
 - **Commands** — the full keystroke-command reference. (Network `Shell*`/
   `ServerConnect` and `DetectOS` are recognised but skipped — no TCP/LED path over BLE.)
 
