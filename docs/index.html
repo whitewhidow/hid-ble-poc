@@ -334,10 +334,16 @@ const $ = id => document.getElementById(id);
 function log(m){ const e=$('log'); e.textContent += m+'\n'; e.scrollTop = e.scrollHeight; }
 // Generic Board-feedback echo: user actions -> "→ cmd", board replies -> "← reply". Denylists keep
 // background polls/getters, chunk streams and high-frequency input (typing/keys/mouse) out of the log.
-const QUIET_TX = ['__STATUS__','__WIFIST__','__VER__','__BONDS__','__TIME__','__AUTOGET__','__ABGET__','__OSGET__','__FDGET__','__TDGET__','__SPGET__','__RELAYCFG__','__PLLIST__','__PLSLOTS__','__PLGET__','__SWITCHLIST__','__W__:','__WEND__','__USBTYPE__','__BLETYPE__','__USBKEY__','__BLEKEY__','__USBMOUSE__','__BLEMOUSE__','__MAC__'];
-const QUIET_RX = ['st:','ver:','bonds:','plbeg:','pldat:','plend:','pllist:','slots:','relaycfg:','mac:','wifi:','ota:','sw:','wok'];
+const QUIET_TX = ['__STATUS__','__WIFIST__','__VER__','__BONDS__','__TIME__','__AUTOGET__','__ABGET__','__OSGET__','__FDGET__','__TDGET__','__SPGET__','__RELAYCFG__','__PLLIST__','__PLSLOTS__','__SWITCHLIST__','__W__:','__WEND__','__USBTYPE__','__BLETYPE__','__USBKEY__','__BLEKEY__','__USBMOUSE__','__BLEMOUSE__','__MAC__'];
+// Includes the option GET-populate replies (autorun/armboot/splash/os/firedelay/typedelay) — they
+// fire on every tab-open; an option CHANGE still shows feedback via its outgoing "→ __*SET__" line.
+const QUIET_RX = ['st:','ver:','bonds:','plbeg:','pldat:','plend:','pllist:','slots:','relaycfg:','mac:','wifi:','ota:','sw:','wok','autorun:','armboot:','splash:','os:','firedelay:','typedelay:'];
 function feedTx(s){ if(s && !QUIET_TX.some(q=>s.startsWith(q))) log('→ '+s); }
 function feedRx(v){ if(v && !QUIET_RX.some(q=>v.startsWith(q))) log('← '+v); }
+// Log a status transition ONCE (deduped) — periodic polls repeat the same value every few seconds;
+// we only want the moment it CHANGES (wifi connects/drops, relay goes online, etc).
+const _lastState = {};
+function logChange(key, msg){ if(_lastState[key] !== msg){ _lastState[key] = msg; log('· '+msg); } }
 
 let rxCh = null, refreshTimer = null;
 let relay = null, boardId = '', _pollOn = false;   // remote-control transport
@@ -560,9 +566,10 @@ function renderStatus(v){
   // relay link badge: 0 off · 1 connecting · 2 remote(creds) · 3 scanning(blue) · 4 remote via open AP(blue)
   const mr2 = /rly=(\d)/.exec(v), hr = $('hRly');
   if (hr && mr2) { const n = +mr2[1];
-    const lbl = n===4?'remote (open AP)':n===2?'remote':n===3?'scanning':'connecting';
+    const lbl = n===4?'remote (open AP)':n===2?'remote':n===3?'scanning':n===1?'connecting':'off';
     const col = n===4?'#5aa9ff':n===2?'#3fb950':n===3?'#5aa9ff':'#e5a94d';
-    hr.textContent = '📡 ' + lbl; hr.style.color = col; hr.hidden = (n === 0); }
+    hr.textContent = '📡 ' + lbl; hr.style.color = col; hr.hidden = (n === 0);
+    logChange('rly', 'relay: ' + lbl); }
 }
 
 // ---- arm-at-boot dropdown ("Manual arm" + a target OS) -------------------
@@ -735,6 +742,7 @@ function renderWifi(v){
     const [ssid, state, ip, ver] = rest.split('|');
     $('wifiStat').textContent = `wifi: ${ssid} — ${state}` + (ip && ip !== '-' ? ` (${ip})` : '') + `\nfirmware v${ver}`;
     const hs = $('hSsid'); if (hs) { const on = (state === 'connected'); hs.textContent = on ? ('📶 ' + ssid) : ''; hs.hidden = !on; }
+    logChange('wifi', 'wifi: ' + ssid + ' — ' + state + (ip && ip !== '-' ? ' (' + ip + ')' : ''));
     if (ver) { $('hdrver').textContent = 'v' + ver; $('fwver').textContent = 'v' + ver; applyVerColor(); }   // fallback: version from __WIFIST__ (in case ver: was dropped)
   } else {
     $('wifiStat').textContent = 'wifi: ' + rest;
@@ -901,20 +909,34 @@ async function loadLib(name){
   } catch(e){ plStat('✖ ' + e.message); }
   finally { busy=false; }
 }
-async function writeFile(putCmd, text){
+// One full write attempt. __PLPUT__ TRUNCATES+rewrites the file, so re-running the whole thing
+// is idempotent — safe to retry on a transport timeout (a dropped chunk/ack over the relay).
+async function writeFileOnce(putCmd, text){
+  const ackMs = relay ? 12000 : 4000;             // relay round-trips (incl. a cold Render) need longer than BLE
   const enc = new TextEncoder().encode(text), pfx = new TextEncoder().encode('__W__:');
   await sendReliable(new TextEncoder().encode(putCmd));
-  let a = await waitFor(v => v === 'wok' || v.startsWith('ferr'));
+  let a = await waitFor(v => v === 'wok' || v.startsWith('ferr'), ackMs);
   if (a.startsWith('ferr')) throw new Error(a);
   for (let i=0;i<enc.length;i+=160){
     const slice = enc.slice(i,i+160), buf = new Uint8Array(pfx.length+slice.length);
     buf.set(pfx,0); buf.set(slice,pfx.length);
     await sendReliable(buf);
-    a = await waitFor(v => v === 'wok' || v.startsWith('ferr'));
+    a = await waitFor(v => v === 'wok' || v.startsWith('ferr'), ackMs);
     if (a.startsWith('ferr')) throw new Error(a);
   }
   await sendReliable(new TextEncoder().encode('__WEND__'));
-  return waitFor(v => v.startsWith('fdone:') || v.startsWith('ferr'));
+  return waitFor(v => v.startsWith('fdone:') || v.startsWith('ferr'), ackMs);
+}
+async function writeFile(putCmd, text){
+  let lastErr;
+  for (let t=0; t<3; t++){
+    try { return await writeFileOnce(putCmd, text); }
+    catch(e){ lastErr=e;
+      if (e.message && e.message.startsWith('ferr')) throw e;   // a real board error (FS full etc) — don't retry
+      if (t < 2) { log('⟳ save retry '+(t+1)+' ('+e.message+')'); await new Promise(r=>setTimeout(r, 400)); }
+    }
+  }
+  throw lastErr;
 }
 async function saveLib(){
   if (!online() || busy || !curLib) return;
