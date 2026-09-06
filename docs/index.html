@@ -743,11 +743,23 @@ $('wifiClear').onclick = async () => {
   await sendCmd('__WIFICLR__'); setTimeout(() => sendCmd('__WIFIST__'), 500);
 };
 // ---- relay remote control ----
+// Pre-warm the relay (Render free tier sleeps ~15min idle -> ~30-50s cold start). GET /health
+// until it answers, so the board isn't the one eating the cold start when it starts polling.
+async function relayWake(url){
+  for (let i = 0; i < 20; i++) {   // ~up to 60s
+    try { const r = await fetch(url + '/health'); if (r.ok) return true; } catch(e){}
+    if ($('rmMsg')) $('rmMsg').textContent = 'waking relay… (' + (i + 1) + ')';
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  return false;
+}
 $('rmGo').onclick = async () => {
   const url = $('rmUrl').value.trim().replace(/\/+$/,''), tok = $('rmTok').value.trim();
   if (!url) { $('rmMsg').textContent = 'enter a relay URL'; return; }
-  $('rmMsg').textContent = 'switching to relay…';
+  $('rmMsg').textContent = 'waking relay…';
   try {
+    if (!await relayWake(url)) { $('rmMsg').textContent = 'relay not reachable — check the URL'; return; }
+    $('rmMsg').textContent = 'switching to relay…';
     sendCmd('__RELAYAUTO__:' + ($('rmAuto').checked ? '1' : '0')); await new Promise(r => setTimeout(r, 120));
     sendCmd('__RELAYKEEP__:' + ($('rmKeep').checked ? '1' : '0')); await new Promise(r => setTimeout(r, 120));
     const p = waitFor(v => v.startsWith('relay:'), 8000); await sendCmd('__RELAY__:' + url + '|' + tok); const r = await p;
