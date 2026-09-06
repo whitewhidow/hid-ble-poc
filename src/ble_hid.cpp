@@ -540,8 +540,12 @@ static void handleCmd(const char* cmd) {
         relaySetAuto(cmd[14] == '1'); ctrlNotify(cmd[14] == '1' ? "relayauto:1" : "relayauto:0");
     } else if (!strncmp(cmd, "__RELAYKEEP__:", 14)) {                              // force-keep-BLE toggle
         relaySetKeep(cmd[14] == '1'); ctrlNotify(cmd[14] == '1' ? "relaykeep:1" : "relaykeep:0");
+    } else if (!strncmp(cmd, "__RELAYSET__:", 13)) {                               // autosave URL/token (no connect)
+        String a = cmd + 13; int bar = a.indexOf('|');
+        relaySaveCreds(bar < 0 ? a : a.substring(0, bar), bar < 0 ? String() : a.substring(bar + 1));
+        ctrlNotify("relayset:ok");
     } else if (!strcmp(cmd, "__RELAYCFG__")) {                                      // portal loads current relay settings
-        ctrlNotify((String("relaycfg:") + relayGetUrl() + "|" + (relayGetAuto() ? "1" : "0") + "|" + (relayGetKeep() ? "1" : "0")).c_str());
+        ctrlNotify((String("relaycfg:") + relayGetUrl() + "|" + (relayGetAuto() ? "1" : "0") + "|" + (relayGetKeep() ? "1" : "0") + "|" + relayGetToken()).c_str());
     } else if (!strcmp(cmd, "__REBOOT__")) {                                        // remote reboot -> BLE returns
         ctrlNotify("reboot:ok"); delay(300); ESP.restart();
     } else if (!strncmp(cmd, "__WIFI__:", 9)) {

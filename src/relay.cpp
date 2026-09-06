@@ -90,10 +90,14 @@ void relayBegin() {
   if (a && s_url.length()) { Serial.println("[relay] auto-connect on boot"); relayGoRemote(s_url, s_tok); }
 }
 
-bool relayGoRemote(const String& url, const String& token) {
+void relaySaveCreds(const String& url, const String& token) {   // persist without connecting (autosave)
   s_url = url; s_url.trim(); while (s_url.endsWith("/")) s_url.remove(s_url.length() - 1);
   s_tok = token;
   s_pref.begin("relay", false); s_pref.putString("url", s_url); s_pref.putString("tok", s_tok); s_pref.end();
+}
+
+bool relayGoRemote(const String& url, const String& token) {
+  relaySaveCreds(url, token);
   computeId();
   s_state = 1;
   Serial.printf("[relay] go remote: %s as %s — bringing up WiFi STA\n", s_url.c_str(), s_id.c_str());

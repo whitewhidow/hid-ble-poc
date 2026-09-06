@@ -6,6 +6,7 @@
 #include <Arduino.h>
 
 void        relayBegin();                                  // load saved settings; auto-connect if enabled
+void        relaySaveCreds(const String& url, const String& token); // persist url/token without connecting
 bool        relayGoRemote(const String& url, const String& token);  // save + STA up + start polling
 void        relayStop();
 bool        relayActive();

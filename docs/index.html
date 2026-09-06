@@ -416,7 +416,7 @@ function handleLine(v){
   if (v.startsWith('board:'))     { setBoard(v.slice(6)); return; }
   if (v.startsWith('mac:'))       { $('bmac').textContent = v.slice(4); return; }
   if (v.startsWith('st:'))        { renderStatus(v); return; }
-  if (v.startsWith('relaycfg:'))  { const p = v.slice(9).split('|'); if(p[0]) $('rmUrl').value = p[0]; $('rmAuto').checked = (p[1] === '1'); $('rmKeep').checked = (p[2] === '1'); return; }
+  if (v.startsWith('relaycfg:'))  { const p = v.slice(9).split('|'); if(p[0]) $('rmUrl').value = p[0]; $('rmAuto').checked = (p[1] === '1'); $('rmKeep').checked = (p[2] === '1'); if(p[3] !== undefined) $('rmTok').value = p.slice(3).join('|'); return; }
   if (v.startsWith('relay:'))     { const e=$('rmMsg'); if(e) e.textContent = v.slice(6); return; }
   if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
 }
@@ -758,6 +758,10 @@ $('rmGo').onclick = async () => {
 };
 $('rmAuto').onchange = () => sendCmd('__RELAYAUTO__:' + ($('rmAuto').checked ? '1' : '0'));
 $('rmKeep').onchange = () => sendCmd('__RELAYKEEP__:' + ($('rmKeep').checked ? '1' : '0'));
+// Autosave the relay URL/token when you finish editing (no separate Save button).
+function saveRelayCreds(){ sendCmd('__RELAYSET__:' + $('rmUrl').value.trim().replace(/\/+$/,'') + '|' + $('rmTok').value.trim()); $('rmMsg').textContent = 'relay settings saved'; }
+$('rmUrl').onchange = saveRelayCreds;
+$('rmTok').onchange = saveRelayCreds;
 $('rcGo').onclick = () => {
   const url = $('rcUrl').value.trim().replace(/\/+$/,''), id = $('rcId').value.trim(), tok = $('rcTok').value.trim();
   if (!url || !id) { alert('Need the relay URL and the board id.'); return; }
