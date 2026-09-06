@@ -889,9 +889,21 @@ let _plExpect = -1;           // declared payload length from plbeg: (to detect 
 const OSES = ['linux','windows','macos','custom'];
 const OSLBL = { linux:'Linux', windows:'Windows', macos:'Macos', custom:'Custom' };
 
-function refreshLib(){ if (!online()) return; buildSlotRows(); sendCmd('__PLLIST__'); setTimeout(() => sendCmd('__PLSLOTS__'), 200); }
+let _libGot = false, _slotsGot = false;   // set true when the pllist:/slots: reply actually renders
+async function refreshLib(){              // resend until both replies land — either can drop on the relay
+  if (!online()) return;
+  buildSlotRows(); _libGot = false; _slotsGot = false;
+  for (let t=0; t<3 && online(); t++){
+    if(!_libGot)   sendCmd('__PLLIST__');
+    await new Promise(r=>setTimeout(r, relay?900:300));
+    if(!_slotsGot) sendCmd('__PLSLOTS__');
+    await new Promise(r=>setTimeout(r, relay?900:300));
+    if(_libGot && _slotsGot) break;
+  }
+}
 
 function renderLib(csv){
+  _libGot = true;
   libNames = csv ? csv.split(',').filter(Boolean) : [];
   const sel = $('pllist'); sel.innerHTML = '';
   if (!libNames.length) { const o = document.createElement('option'); o.value=''; o.textContent='(no payloads — + New)'; sel.appendChild(o); }
@@ -900,6 +912,7 @@ function renderLib(csv){
   for (const s of document.querySelectorAll('.slotsel')) fillSlotSel(s, slotMap[s.dataset.os]);
 }
 function renderSlots(str){
+  _slotsGot = true;
   slotMap = {}; for (const os of OSES) slotMap[os] = '';   // include 'custom' — was dropped by a linux/windows/macos-only reset
   for (const part of str.split(';')){ const [os, n] = part.split('='); if (os in slotMap) slotMap[os] = n || ''; }
   buildSlotRows();
