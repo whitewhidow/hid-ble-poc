@@ -1,5 +1,6 @@
 #include "display.h"
 #include "version.h"
+#include "relay.h"     // relayState() for the STA indicator
 
 #if defined(POC_BOARD_HEADLESS)
 // Headless board (no panel): the BLE portal is the entire UI, so every display
@@ -298,18 +299,14 @@ void dispBle(bool pc, bool phone, bool usb, bool autorun, bool armboot, int targ
         const char* tl = targetOs == 1 ? "L" : targetOs == 2 ? "W" : targetOs == 3 ? "M" : "D"; // Linux/Win/Mac/Detect
         lcd.setTextColor(lcd.color888(0x5a, 0xA9, 0xFF), 0x000000u); lcd.print(tl);
     }
-    // Battery gauge on the right (hidden when batt<0 — C5, or no fuel gauge).
-    if (batt >= 0) {
-        uint32_t col = batt > 50 ? on : (batt > 20 ? amb : red);
-        int bw = 26, bh = 13, bx = lcd.width() - bw - 8, by = y + 1;
-        lcd.drawRect(bx, by, bw, bh, dim);
-        lcd.fillRect(bx + bw, by + 3, 2, bh - 6, dim);              // + terminal nub
-        int fw = (bw - 4) * batt / 100; if (fw < 0) fw = 0;
-        lcd.fillRect(bx + 2, by + 2, fw, bh - 4, col);
-        char p[6]; int pw = snprintf(p, sizeof(p), "%d%%", batt);
-        lcd.setTextSize(1);
-        lcd.setTextColor(dim, 0x000000u); lcd.setCursor(bx - pw * 6 - 4, y + 4); lcd.print(p);
-    }
+    // STA (relay link) on the right, replacing the battery gauge: red = radio off,
+    // orange = radio on but not connected to the relay, green = connected + polling.
+    (void)batt;
+    int rs = relayState();
+    uint32_t sc = rs == 2 ? on : (rs == 1 ? amb : red);
+    lcd.setTextSize(UI_BAR_TS);
+    int sw = 3 * 6 * UI_BAR_TS;                                      // "STA" ~ 3 chars
+    lcd.setTextColor(sc, 0x000000u); lcd.setCursor(lcd.width() - sw - UI_PAD, y); lcd.print("STA");
 }
 
 #endif  // POC_BOARD_HEADLESS
