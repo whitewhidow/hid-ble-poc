@@ -442,9 +442,9 @@ function renderDevices(payload){
 // Dispatch one line from EITHER transport (BLE notify or a relay reply).
 function handleLine(v){
   feedRx(v);                                       // echo every meaningful board reply to the feedback log
-  if (v.startsWith('plbeg:')) { libBuf = ''; if(_bump) _bump(); return; }
+  if (v.startsWith('plbeg:')) { libBuf = ''; const pp=v.split(':'); _plExpect = +pp[pp.length-1]||0; if(_bump) _bump(); return; }
   if (v.startsWith('pldat:')) { libBuf += v.slice(6); if(_bump) _bump(); return; }
-  if (v.startsWith('plend:')) { $('libtext').value = libBuf; if (waiter && waiter.match(v)) waiter.resolve(v); return; }
+  if (v.startsWith('plend:')) { if (waiter && waiter.match(v)) waiter.resolve(v); return; }   // completeness verified in loadLibOnce
   if (v.startsWith('pllist:')) { renderLib(v.slice(7)); return; }
   if (v.startsWith('slots:'))  { renderSlots(v.slice(6)); return; }
   if (waiter && waiter.match(v)) { waiter.resolve(v); return; }
@@ -885,6 +885,7 @@ let libNames = [];            // library payload names
 let curLib = null;            // name loaded in the editor
 let slotMap = { linux:'', windows:'', macos:'', custom:'' };
 let libBuf = '';              // accumulates pldat: chunks
+let _plExpect = -1;           // declared payload length from plbeg: (to detect a chunk dropped on the relay)
 const OSES = ['linux','windows','macos','custom'];
 const OSLBL = { linux:'Linux', windows:'Windows', macos:'Macos', custom:'Custom' };
 
@@ -922,8 +923,16 @@ function buildSlotRows(){
   }
 }
 async function loadLibOnce(name){                 // inactivity timeout: only fails if chunks stop arriving
-  libBuf = ''; await sendCmd('__PLGET__:' + name);
-  return waitForIdle(v => v === 'plend:' + name || v === 'plerr:read', ackMs());
+  libBuf = ''; _plExpect = -1;
+  await sendCmd('__PLGET__:' + name);
+  const r = await waitForIdle(v => v === 'plend:' + name || v === 'plerr:read', ackMs());
+  if (r === 'plerr:read') { $('libtext').value = ''; return r; }
+  // A chunk dropped on the relay -> libBuf is short of the length plbeg declared. Treat as a
+  // 'timeout' so withRetry re-loads (safe: plend already ended the stream, so no chunk mixing).
+  const got = new TextEncoder().encode(libBuf).length;
+  if (_plExpect >= 0 && got < _plExpect) throw new Error('timeout: incomplete payload ('+got+'/'+_plExpect+' B)');
+  $('libtext').value = libBuf;                    // commit only a verified-complete payload
+  return r;
 }
 async function loadLib(name){
   if (!online() || busy || !name) return;
