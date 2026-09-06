@@ -50,6 +50,18 @@
 <h1 style="text-align:center;margin-bottom:14px">🐷 PoC-KBD control</h1>
 
 <button id="connect" style="width:100%">Connect to PoC-KBD</button>
+<div id="connMsg" class="sub" style="margin-top:6px;color:#3fb950"></div>
+<div id="relayConnect" style="margin-top:10px">
+  <div class="sub">…or drive a board over the internet through your <b>relay</b> (no BLE range needed):</div>
+  <div class="row" style="margin-top:4px;display:flex;gap:6px">
+    <input id="rcUrl" placeholder="relay URL — https://…" style="flex:2">
+    <input id="rcId" placeholder="board id — bt-…" style="flex:1">
+  </div>
+  <div class="row" style="margin-top:4px;display:flex;gap:6px">
+    <input id="rcTok" placeholder="token (if the relay needs one)" style="flex:2">
+    <button id="rcGo" class="sec" style="flex:1">Connect via relay</button>
+  </div>
+</div>
 <div id="stat"></div>
 <div id="hdr" hidden style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:10px;padding:9px 12px;background:#161b22;border:1px solid #30363d;border-radius:10px;font-size:13px">
   <span id="hdrConn" style="font-weight:600;color:#3fb950">● connected</span>
@@ -196,6 +208,13 @@
       <button id="wifiSave" style="flex:1">Save</button>
       <button id="wifiClear" class="warn">Forget</button>
     </div>
+    <div class="sub" style="margin-top:14px"><b>Go remote</b> — connect this board to your relay to control it over the internet. PSRAM boards keep BLE-HID live alongside; no-PSRAM boards drop BLE (USB-HID still types). Needs the WiFi creds above.</div>
+    <div class="row" style="margin-top:4px;display:flex;gap:6px"><input id="rmUrl" placeholder="relay URL — https://…" style="flex:2"><input id="rmTok" placeholder="token" style="flex:1"></div>
+    <label class="sub" style="margin-top:4px;display:block;cursor:pointer"><input type="checkbox" id="rmAuto"> reconnect to the relay on boot</label>
+    <button id="rmGo" style="width:100%;margin-top:4px">Go remote (relay)</button>
+    <div id="rmMsg" class="sub" style="margin-top:4px"></div>
+    <div id="rmId" class="sub" style="margin-top:4px"></div>
+    <button id="rebootBtn" class="sec" style="width:100%;margin-top:10px">Reboot board</button>
   </section>
 
   <section id="tab-update" hidden>
@@ -306,12 +325,14 @@ const $ = id => document.getElementById(id);
 function log(m){ const e=$('log'); e.textContent += m+'\n'; e.scrollTop = e.scrollHeight; }
 
 let rxCh = null, refreshTimer = null;
+let relay = null, boardId = '', _pollOn = false;   // remote-control transport
 let busy = false;              // a file load/save is in progress -> pause other traffic
 let curOS = null;             // OS whose payload is loaded in the textarea
 let fileBuf = '';             // accumulates fdat: chunks during a load
 let waiter = null;            // {match, resolve} for a pending board reply
 
 async function sendCmd(s){
+  if (relay) return relaySend(s);                  // remote: POST the command to the relay
   if(!rxCh) return;
   const d = new TextEncoder().encode(s);
   if (rxCh.writeValueWithoutResponse) await rxCh.writeValueWithoutResponse(d);
@@ -368,6 +389,61 @@ function renderDevices(payload){
   }
 }
 
+// Dispatch one line from EITHER transport (BLE notify or a relay reply).
+function handleLine(v){
+  if (v.startsWith('plbeg:')) { libBuf = ''; return; }
+  if (v.startsWith('pldat:')) { libBuf += v.slice(6); return; }
+  if (v.startsWith('plend:')) { $('libtext').value = libBuf; if (waiter && waiter.match(v)) waiter.resolve(v); return; }
+  if (v.startsWith('pllist:')) { renderLib(v.slice(7)); return; }
+  if (v.startsWith('slots:'))  { renderSlots(v.slice(6)); return; }
+  if (waiter && waiter.match(v)) { waiter.resolve(v); return; }
+  if (v.startsWith('wifi:')) { renderWifi(v); return; }
+  if (v.startsWith('ota:'))  { renderOta(v);  return; }
+  if (v.startsWith('sw:'))   { renderSwitch(v.slice(3)); return; }
+  if (v.startsWith('autorun:')) { $('autorun').value = v.slice(8); return; }
+  if (v.startsWith('armboot:')) { armOn = (v.slice(8) === '1'); updateArmSel(); return; }
+  if (v.startsWith('splash:'))  { $('splash').checked = (v.slice(7) === '1'); return; }
+  if (v.startsWith('os:'))      { armOs = v.slice(3); updateArmSel(); return; }
+  if (v.startsWith('firedelay:')) { $('firedelay').value = v.slice(10); return; }
+  if (v.startsWith('typedelay:')) { $('typedelay').value = v.slice(10); return; }
+  if (v.startsWith('ver:'))       { const p = v.slice(4).split('|');   // "ver:<v>|<board>|<relayId>"
+    const vv = 'v' + p[0]; $('fwver').textContent = vv; $('hdrver').textContent = vv; applyVerColor();
+    if (p[1]) setBoard(p[1]);
+    if (p[2]) { boardId = p[2]; const e = $('rmId'); if (e) e.textContent = "board id: " + p[2]; } return; }
+  if (v.startsWith('board:'))     { setBoard(v.slice(6)); return; }
+  if (v.startsWith('mac:'))       { $('bmac').textContent = v.slice(4); return; }
+  if (v.startsWith('st:'))        { renderStatus(v); return; }
+  if (v.startsWith('relay:'))     { const e=$('rmMsg'); if(e) e.textContent = v.slice(6); return; }
+  if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
+}
+
+// ---- relay transport (control the board over the internet; see relay/) ----
+function relayHdr(){ const h={'Content-Type':'text/plain'}; if(relay.tok) h['x-relay-token']=relay.tok; return h; }
+function relaySend(s){ return fetch(relay.url+'/cmd/'+relay.id,{method:'POST',headers:relayHdr(),body:s}).catch(()=>{}); }
+async function relayPollLoop(){
+  if(_pollOn) return; _pollOn=true;
+  while(relay){
+    try { const r=await fetch(relay.url+'/poll/'+relay.id,{headers:relayHdr()});
+      if(r.status===200){ const t=await r.text(); if(t) handleLine(t); }
+    } catch(e){ await new Promise(r=>setTimeout(r,1500)); }
+  }
+  _pollOn=false;
+}
+function startRemote(label){
+  $('connect').hidden=true; const rc=$('relayConnect'); if(rc) rc.hidden=true;
+  const cm=$('connMsg'); if(cm) cm.textContent='';
+  $('hdr').hidden=false; $('app').hidden=false; $('hdrConn').textContent='● '+label;
+  relayPollLoop();
+  sendCmd('__VER__'); setTimeout(()=>sendCmd('__STATUS__'),400); setTimeout(refreshSettings,700);
+  setInterval(()=>{ if(relay) sendCmd('__STATUS__'); }, 8000);
+}
+function showConnectScreen(msg){
+  rxCh=null; relay=null; _pollOn=false; waiter=null;
+  $('app').hidden=true; $('hdr').hidden=true; $('connect').hidden=false;
+  const rc=$('relayConnect'); if(rc) rc.hidden=false;
+  const cm=$('connMsg'); if(cm) cm.textContent = msg || '';
+}
+
 $('connect').onclick = async () => {
   if (!navigator.bluetooth) { $('stat').textContent = '✖ Web Bluetooth unavailable — use Chrome/Edge, not iOS/Safari.'; return; }
   try {
@@ -382,39 +458,11 @@ $('connect').onclick = async () => {
     rxCh = await svc.getCharacteristic(RX);
     const txCh = await svc.getCharacteristic(TX);
     await txCh.startNotifications();
-    txCh.addEventListener('characteristicvaluechanged', e => {
-      const v = new TextDecoder().decode(e.target.value);
-      // Library payload framing: plbeg -> pldat* -> plend. Accumulate here.
-      if (v.startsWith('plbeg:')) { libBuf = ''; return; }
-      if (v.startsWith('pldat:')) { libBuf += v.slice(6); return; }
-      if (v.startsWith('plend:')) {
-        $('libtext').value = libBuf;
-        if (waiter && waiter.match(v)) waiter.resolve(v);
-        return;
-      }
-      if (v.startsWith('pllist:')) { renderLib(v.slice(7)); return; }
-      if (v.startsWith('slots:'))  { renderSlots(v.slice(6)); return; }
-      if (waiter && waiter.match(v)) { waiter.resolve(v); return; }
-      if (v.startsWith('wifi:')) { renderWifi(v); return; }
-      if (v.startsWith('ota:'))  { renderOta(v);  return; }
-      if (v.startsWith('sw:'))   { renderSwitch(v.slice(3)); return; }
-      if (v.startsWith('autorun:')) { $('autorun').value = v.slice(8); return; }
-      if (v.startsWith('armboot:')) { armOn = (v.slice(8) === '1'); updateArmSel(); return; }
-      if (v.startsWith('splash:'))  { $('splash').checked = (v.slice(7) === '1'); return; }
-      if (v.startsWith('os:'))      { armOs = v.slice(3); updateArmSel(); return; }
-      if (v.startsWith('firedelay:')) { $('firedelay').value = v.slice(10); return; }
-      if (v.startsWith('typedelay:')) { $('typedelay').value = v.slice(10); return; }
-      if (v.startsWith('ver:'))       { const rest = v.slice(4), bar = rest.indexOf('|');   // "ver:<v>|<board>"
-        const vv = 'v' + (bar >= 0 ? rest.slice(0, bar) : rest); $('fwver').textContent = vv; $('hdrver').textContent = vv; applyVerColor();
-        if (bar >= 0) setBoard(rest.slice(bar + 1)); return; }
-      if (v.startsWith('board:'))     { setBoard(v.slice(6)); return; }   // legacy split form
-      if (v.startsWith('mac:'))       { $('bmac').textContent = v.slice(4); return; }
-      if (v.startsWith('st:'))        { renderStatus(v); return; }
-      if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
-    });
+    txCh.addEventListener('characteristicvaluechanged', e => handleLine(new TextDecoder().decode(e.target.value)));
     $('stat').textContent = '';
     $('hdr').hidden = false; $('hdrConn').textContent = '● ' + (dev.name || 'PoC-KBD');
     $('connect').hidden = true; $('app').hidden = false;
+    { const rc=$('relayConnect'); if(rc) rc.hidden=true; const cm=$('connMsg'); if(cm) cm.textContent=''; }
     sendCmd('__BONDS__');                                   // list now
     setTimeout(() => sendCmd('__MAC__'), 150);              // board BLE MAC
     setTimeout(() => sendCmd('__STATUS__'), 300);           // WIFI / BLE-HID / USB-HID transport status
@@ -688,6 +736,36 @@ $('wifiClear').onclick = async () => {
   if (!rxCh || !confirm('Forget saved WiFi on the board?')) return;
   await sendCmd('__WIFICLR__'); setTimeout(() => sendCmd('__WIFIST__'), 500);
 };
+// ---- relay remote control ----
+$('rmGo').onclick = async () => {
+  const url = $('rmUrl').value.trim().replace(/\/+$/,''), tok = $('rmTok').value.trim();
+  if (!url) { $('rmMsg').textContent = 'enter a relay URL'; return; }
+  $('rmMsg').textContent = 'switching to relay…';
+  try {
+    sendCmd('__RELAYAUTO__:' + ($('rmAuto').checked ? '1' : '0')); await new Promise(r => setTimeout(r, 150));
+    const p = waitFor(v => v.startsWith('relay:'), 8000); await sendCmd('__RELAY__:' + url + '|' + tok); const r = await p;
+    if (r.startsWith('relay:up')) { const id = r.slice(9).trim();
+      try { localStorage.setItem('relay-last', JSON.stringify({url,id,tok})); } catch(e){}
+      $('rcUrl').value = url; $('rcId').value = id; $('rcTok').value = tok;
+      showConnectScreen('Board is now remote as ' + id + '. Connect via the relay below.'); }
+    else $('rmMsg').textContent = r;
+  } catch(e) { $('rmMsg').textContent = 'failed: ' + e.message; }
+};
+$('rcGo').onclick = () => {
+  const url = $('rcUrl').value.trim().replace(/\/+$/,''), id = $('rcId').value.trim(), tok = $('rcTok').value.trim();
+  if (!url || !id) { alert('Need the relay URL and the board id.'); return; }
+  try { localStorage.setItem('relay-last', JSON.stringify({url,id,tok})); } catch(e){}
+  relay = {url,id,tok}; startRemote('relay ' + id);
+};
+$('rebootBtn').onclick = () => {
+  if (!confirm('Reboot the board now?' + (relay ? ' It comes back with BLE up (turn off reconnect-on-boot first if set).' : ''))) return;
+  sendCmd('__REBOOT__');
+  if (relay) { relay = null; _pollOn = false; $('hdrConn').textContent = '● rebooting…'; setTimeout(() => location.reload(), 2500); }
+};
+try { const l = JSON.parse(localStorage.getItem('relay-last') || '{}');
+  if (l.url) { $('rcUrl').value = l.url; $('rmUrl').value = l.url; }
+  if (l.id) $('rcId').value = l.id;
+  if (l.tok) { $('rcTok').value = l.tok; $('rmTok').value = l.tok; } } catch(e){}
 $('otaRun').onclick = async () => {
   if (!rxCh || busy || !confirm('Reboot and update to the latest firmware' + (latestVer ? ' (v' + latestVer + ')' : '') + ' over WiFi, then boot into it? The board will disconnect — watch its screen for progress. Keep it powered.')) return;
   busy = true; $('otaRun').disabled = true; $('otaStat').textContent = 'rebooting to update — watch the board screen…';

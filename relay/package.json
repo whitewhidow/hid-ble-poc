@@ -1,0 +1,13 @@
+{
+  "name": "board-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Command/reply relay for the board-app template",
+  "main": "relay.js",
+  "scripts": {
+    "start": "node relay.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

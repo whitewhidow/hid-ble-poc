@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: board-relay
+    runtime: node
+    plan: free
+    rootDir: relay
+    buildCommand: npm install    # no dependencies, but keeps Render's Node build happy
+    startCommand: npm start      # -> node relay.js  (reads $PORT, set by Render)
+    healthCheckPath: /health
+    envVars:
+      - key: RELAY_TOKEN
+        generateValue: true      # a random token; send the same one from the portal

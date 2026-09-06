@@ -9,6 +9,7 @@
 #include <Arduino.h>
 #include "usb_hid.h"
 #include "ble_hid.h"
+#include "relay.h"
 #include "display.h"
 #include "netota.h"
 #include "version.h"
@@ -265,6 +266,7 @@ void setup() {
     usbHidBegin();
     bleHidBegin();
     netBegin();                         // reconnect WiFi if creds were saved (for OTA)
+    relayBegin();                       // load relay settings; auto-connect if enabled
     if (showSplash) delay(2000);        // only linger on the splash if we showed it
 #ifdef POC_HAS_USB_HID
     if (bleArmBoot()) {                 // headless: auto-arm the configured OS, wait for a plug
@@ -280,6 +282,7 @@ void setup() {
 
 void loop() {
     bleHidTick();
+    relayTick();                        // dispatch any commands pulled from the relay
 
     bool b = digitalRead(BTN);
     static bool btnReady = false;   // ignore a button held from boot (GPIO0 = BOOT, held during flashing)

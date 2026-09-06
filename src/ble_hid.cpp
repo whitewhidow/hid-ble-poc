@@ -8,6 +8,7 @@
 #include "netota.h"    // WiFi provisioning + in-app OTA self-update
 #include "version.h"   // POC_OTA_URL (self-update)
 #include "switch_targets.h"  // SWITCH_TARGETS[] (multi-target firmware switch)
+#include "relay.h"     // remote control over WiFi (relayPostReply / relayGoRemote / …)
 #include <WiFi.h>      // WiFi.status() for the transport indicators
 #include "display.h"   // OTA progress on the LCD
 #include <Arduino.h>
@@ -69,10 +70,23 @@ static const uint8_t REPORT_MAP[] = {
     0xC0
 };
 
-static void ctrlNotify(const char* s) { if (ctrlTx) { ctrlTx->setValue((uint8_t*)s, strlen(s)); ctrlTx->notify(); } }
+static void handleCmd(const char* cmd);          // fwd: also run for relay-sourced commands
+static bool s_replyToRelay = false;              // while true, control replies go to the relay, not BLE
+static void ctrlNotify(const char* s) {
+    if (s_replyToRelay) { relayPostReply(s); return; }
+    if (ctrlTx) { ctrlTx->setValue((uint8_t*)s, strlen(s)); ctrlTx->notify(); }
+}
 // Public wrapper so the rest of the firmware (e.g. a USB fire from the button) can
 // surface what it's doing in the phone/web "board feedback" log.
 void bleHidNotify(const char* s) { ctrlNotify(s); }
+// Run a command that arrived over the relay: same handler, replies routed to the relay.
+void bleHidHandleExternal(const char* cmd) { s_replyToRelay = true; handleCmd(cmd); s_replyToRelay = false; }
+// Tear BLE all the way down (drops HID + control) to free ~40KB for a TLS relay connection
+// on no-PSRAM boards. USB-HID still types; BLE returns on reboot.
+void bleHidStop() {
+    g_hidReady = false; ctrlTx = input = consumer = sysctl = mouse = nullptr;
+    NimBLEDevice::deinit(true);
+}
 
 // RSSI (dBm) of the phone/control link; 0 = unavailable.
 extern "C" int ble_gap_conn_rssi(uint16_t conn_handle, int8_t *out_rssi);
@@ -505,9 +519,26 @@ static void handleCmd(const char* cmd) {
     } else if (!strcmp(cmd, "__VER__")) {
         // ONE notify: two rapid ctrlNotify() calls race (setValue+notify has no flush,
         // so the 2nd clobbers the 1st). Pack version + board name into a single line.
-        ctrlNotify((String("ver:") + netVersion() + "|" + pocBoardName()).c_str());
+        ctrlNotify((String("ver:") + netVersion() + "|" + pocBoardName() + "|" + relayId()).c_str());
     } else if (!strcmp(cmd, "__WIFIST__")) {
         ctrlNotify(netStatus().c_str());
+    } else if (!strncmp(cmd, "__RELAY__", 9) && (cmd[9] == 0 || cmd[9] == ':')) {   // go remote over WiFi
+        String url, tok;
+        if (cmd[9] == ':') { String a = cmd + 10; int bar = a.indexOf('|');
+            url = bar < 0 ? a : a.substring(0, bar); tok = bar < 0 ? String() : a.substring(bar + 1); }
+        else { url = relayGetUrl(); tok = relayGetToken(); }                        // else use saved settings
+        if (!url.length()) ctrlNotify("relay:err set a Relay URL");
+        else { relayGoRemote(url, tok); ctrlNotify((String("relay:up ") + relayId()).c_str());
+            // No PSRAM can't fit BLE + WiFi + TLS — drop BLE so the relay's TLS handshake has heap
+            // (USB-HID still types). PSRAM boards keep BLE-HID live alongside the relay.
+            if (ESP.getPsramSize() == 0) { delay(350); bleHidStop(); }
+        }
+    } else if (!strcmp(cmd, "__RELAYOFF__")) {
+        relayStop(); ctrlNotify("relay:off");
+    } else if (!strncmp(cmd, "__RELAYAUTO__:", 14)) {                               // connect-on-boot toggle
+        relaySetAuto(cmd[14] == '1'); ctrlNotify(cmd[14] == '1' ? "relayauto:1" : "relayauto:0");
+    } else if (!strcmp(cmd, "__REBOOT__")) {                                        // remote reboot -> BLE returns
+        ctrlNotify("reboot:ok"); delay(300); ESP.restart();
     } else if (!strncmp(cmd, "__WIFI__:", 9)) {
         String v = cmd + 9; int bar = v.indexOf('|');
         if (bar < 0) { ctrlNotify("wifi:badfmt"); return; }
