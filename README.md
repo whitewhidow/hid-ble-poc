@@ -49,6 +49,11 @@ flags and sharing one firmware:
   arm-at-boot (`AB` + the target-OS letter when on), and a **battery gauge** (T-Embed + Cardputer).
 - **AUTORUN** (arm on select → auto-fire on plug) and **arm-at-boot** (headless) are
   runtime NVS settings, set from the phone — no reflash.
+- **Remote control over WiFi** (see [`relay/`](relay/)) — drive the board from beyond BLE
+  range via a tiny relay you host: it joins WiFi and long-polls the relay for the *same*
+  control commands, so the phone page runs it over the internet (TLS keep-alive + batching
+  keep typing responsive). The S3 keeps BLE-HID live alongside; set the relay URL in
+  **Options → Go remote**. Handy for a headless dongle deployed somewhere and driven remotely.
 
 ## Phone control page — `docs/index.html`
 
