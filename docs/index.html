@@ -344,6 +344,31 @@ function feedRx(v){ if(v && !QUIET_RX.some(q=>v.startsWith(q))) log('← '+v); }
 // we only want the moment it CHANGES (wifi connects/drops, relay goes online, etc).
 const _lastState = {};
 function logChange(key, msg){ if(_lastState[key] !== msg){ _lastState[key] = msg; log('· '+msg); } }
+// Per-reply timeout: a warm relay round-trip is <2s; 10s leaves slack. Instead of one huge timeout we
+// RETRY the whole op, which also rides out a cold Render wake across attempts.
+const RELAY_MS = 10000;
+function ackMs(){ return relay ? RELAY_MS : 4000; }
+// Retry an async op up to 3x on a TIMEOUT (a dropped reply/chunk over the relay). Real board errors
+// (ferr:/plerr:) are NOT retried. One mechanism for every relay-driven load/save.
+async function withRetry(op, label){
+  let last;
+  for (let t=1; t<=3; t++){
+    try { return await op(); }
+    catch(e){ last=e; if(!/timeout/i.test(e.message||'')) throw e;
+      if(t<3){ log('⟳ '+(label||'retrying')+' — attempt '+(t+1)+'/3'); await new Promise(r=>setTimeout(r,400)); } }
+  }
+  throw last;
+}
+// Inactivity wait for a streaming transfer: fail only after idleMs with NO chunk activity, so a large
+// actively-streaming load never trips it. The plbeg:/pldat: handlers call _bump() on each chunk.
+let _bump = null;
+function waitForIdle(matchDone, idleMs){
+  return new Promise((res, rej) => {
+    let last = Date.now(); _bump = () => { last = Date.now(); };
+    const iv = setInterval(() => { if (Date.now()-last > idleMs){ clearInterval(iv); _bump=null; waiter=null; rej(new Error('board timeout')); } }, 400);
+    waiter = { match: matchDone, resolve: v => { clearInterval(iv); _bump=null; waiter=null; res(v); } };
+  });
+}
 
 let rxCh = null, refreshTimer = null;
 let relay = null, boardId = '', _pollOn = false;   // remote-control transport
@@ -417,8 +442,8 @@ function renderDevices(payload){
 // Dispatch one line from EITHER transport (BLE notify or a relay reply).
 function handleLine(v){
   feedRx(v);                                       // echo every meaningful board reply to the feedback log
-  if (v.startsWith('plbeg:')) { libBuf = ''; return; }
-  if (v.startsWith('pldat:')) { libBuf += v.slice(6); return; }
+  if (v.startsWith('plbeg:')) { libBuf = ''; if(_bump) _bump(); return; }
+  if (v.startsWith('pldat:')) { libBuf += v.slice(6); if(_bump) _bump(); return; }
   if (v.startsWith('plend:')) { $('libtext').value = libBuf; if (waiter && waiter.match(v)) waiter.resolve(v); return; }
   if (v.startsWith('pllist:')) { renderLib(v.slice(7)); return; }
   if (v.startsWith('slots:'))  { renderSlots(v.slice(6)); return; }
@@ -896,47 +921,41 @@ function buildSlotRows(){
     row.append(lbl, sel, btn); box.appendChild(row);
   }
 }
+async function loadLibOnce(name){                 // inactivity timeout: only fails if chunks stop arriving
+  libBuf = ''; await sendCmd('__PLGET__:' + name);
+  return waitForIdle(v => v === 'plend:' + name || v === 'plerr:read', ackMs());
+}
 async function loadLib(name){
   if (!online() || busy || !name) return;
   busy = true; curLib = name; libBuf = '';
   $('libtext').value=''; $('libtext').disabled=true; $('plsave').disabled=true;
   plStat('loading ' + name + '…');
   try {
-    await sendCmd('__PLGET__:' + name);
-    const r = await waitFor(v => v === 'plend:' + name || v === 'plerr:read', 20000);   // 20s: multi-chunk load over the relay is slower
-    $('libtext').disabled=false; $('plsave').disabled=false;
+    const r = await withRetry(() => loadLibOnce(name), 'load ' + name);
     plStat(r==='plerr:read' ? 'could not read ' + name : 'editing ' + name + ' (' + $('libtext').value.length + ' bytes)');
   } catch(e){ plStat('✖ ' + e.message); }
-  finally { busy=false; }
+  finally { busy=false; $('libtext').disabled=false; $('plsave').disabled=false; }
 }
 // One full write attempt. __PLPUT__ TRUNCATES+rewrites the file, so re-running the whole thing
 // is idempotent — safe to retry on a transport timeout (a dropped chunk/ack over the relay).
 async function writeFileOnce(putCmd, text){
-  const ackMs = relay ? 12000 : 4000;             // relay round-trips (incl. a cold Render) need longer than BLE
+  const ms = ackMs();                             // per-reply timeout; each chunk ack resets it (inactivity-style)
   const enc = new TextEncoder().encode(text), pfx = new TextEncoder().encode('__W__:');
   await sendReliable(new TextEncoder().encode(putCmd));
-  let a = await waitFor(v => v === 'wok' || v.startsWith('ferr'), ackMs);
+  let a = await waitFor(v => v === 'wok' || v.startsWith('ferr'), ms);
   if (a.startsWith('ferr')) throw new Error(a);
   for (let i=0;i<enc.length;i+=160){
     const slice = enc.slice(i,i+160), buf = new Uint8Array(pfx.length+slice.length);
     buf.set(pfx,0); buf.set(slice,pfx.length);
     await sendReliable(buf);
-    a = await waitFor(v => v === 'wok' || v.startsWith('ferr'), ackMs);
+    a = await waitFor(v => v === 'wok' || v.startsWith('ferr'), ms);
     if (a.startsWith('ferr')) throw new Error(a);
   }
   await sendReliable(new TextEncoder().encode('__WEND__'));
-  return waitFor(v => v.startsWith('fdone:') || v.startsWith('ferr'), ackMs);
+  return waitFor(v => v.startsWith('fdone:') || v.startsWith('ferr'), ms);
 }
 async function writeFile(putCmd, text){
-  let lastErr;
-  for (let t=0; t<3; t++){
-    try { return await writeFileOnce(putCmd, text); }
-    catch(e){ lastErr=e;
-      if (e.message && e.message.startsWith('ferr')) throw e;   // a real board error (FS full etc) — don't retry
-      if (t < 2) { log('⟳ save retry '+(t+1)+' ('+e.message+')'); await new Promise(r=>setTimeout(r, 400)); }
-    }
-  }
-  throw lastErr;
+  return withRetry(() => writeFileOnce(putCmd, text), 'save');
 }
 async function saveLib(){
   if (!online() || busy || !curLib) return;
