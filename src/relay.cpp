@@ -35,6 +35,8 @@ String relayGetUrl()   { return s_url; }
 String relayGetToken() { return s_tok; }
 bool   relayGetAuto()  { s_pref.begin("relay", true); bool a = s_pref.getBool("auto", false); s_pref.end(); return a; }
 void   relaySetAuto(bool on) { s_pref.begin("relay", false); s_pref.putBool("auto", on); s_pref.end(); }
+bool   relayGetKeep()  { s_pref.begin("relay", true); bool k = s_pref.getBool("keep", false); s_pref.end(); return k; }
+void   relaySetKeep(bool on) { s_pref.begin("relay", false); s_pref.putBool("keep", on); s_pref.end(); }
 
 // ---- HTTP helpers — ONLY ever called from the relay task, so at most one TLS context
 // exists at a time (a no-PSRAM board can't fit two TLS + WiFi + BLE in heap). ----

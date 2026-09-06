@@ -208,13 +208,6 @@
       <button id="wifiSave" style="flex:1">Save</button>
       <button id="wifiClear" class="warn">Forget</button>
     </div>
-    <div class="sub" style="margin-top:14px"><b>Go remote</b> — connect this board to your relay to control it over the internet. PSRAM boards keep BLE-HID live alongside; no-PSRAM boards drop BLE (USB-HID still types). Needs the WiFi creds above.</div>
-    <div class="row" style="margin-top:4px;display:flex;gap:6px"><input id="rmUrl" placeholder="relay URL — https://…" style="flex:2"><input id="rmTok" placeholder="token" style="flex:1"></div>
-    <label class="sub" style="margin-top:4px;display:block;cursor:pointer"><input type="checkbox" id="rmAuto"> reconnect to the relay on boot</label>
-    <button id="rmGo" style="width:100%;margin-top:4px">Go remote (relay)</button>
-    <div id="rmMsg" class="sub" style="margin-top:4px"></div>
-    <div id="rmId" class="sub" style="margin-top:4px"></div>
-    <button id="rebootBtn" class="sec" style="width:100%;margin-top:10px">Reboot board</button>
   </section>
 
   <section id="tab-update" hidden>
@@ -264,6 +257,16 @@
       <input type="checkbox" id="splash" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0">
       <span style="flex:1">Show boot splash (off = boot straight to the menu, faster)</span>
     </label>
+
+    <h3 style="margin:18px 0 6px">Remote control (relay)</h3>
+    <div class="sub" style="margin:0 0 8px">Drive this board over the internet via a relay you host (see <code>relay/</code>). PSRAM boards keep BLE-HID live alongside; no-PSRAM boards drop BLE (USB-HID still types). Save WiFi creds first (WiFi tab).</div>
+    <div class="row" style="display:flex;gap:6px"><input id="rmUrl" placeholder="relay URL — https://…" style="flex:2"><input id="rmTok" placeholder="token (optional)" style="flex:1"></div>
+    <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0"><input type="checkbox" id="rmAuto" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0"><span style="flex:1">Reconnect to the relay on boot</span></label>
+    <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0"><input type="checkbox" id="rmKeep" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0"><span style="flex:1">Force-keep BLE when remote (auto-kept on PSRAM boards)</span></label>
+    <button id="rmGo" style="width:100%;margin-top:8px">Go remote (relay)</button>
+    <div id="rmMsg" class="sub" style="margin-top:4px"></div>
+    <div id="rmId" class="sub" style="margin-top:4px"></div>
+    <button id="rebootBtn" class="sec" style="width:100%;margin-top:10px">Reboot board</button>
   </section>
 
   <section id="tab-help" hidden>
@@ -353,7 +356,7 @@ function waitFor(match, timeout=4000){
 // The board has a single command slot processed once per loop, so back-to-back
 // queries overwrite each other — space them out.
 async function refreshSettings(){
-  for (const c of ['__VER__','__AUTOGET__','__ABGET__','__OSGET__','__FDGET__','__TDGET__','__SPGET__','__WIFIST__']) {
+  for (const c of ['__VER__','__AUTOGET__','__ABGET__','__OSGET__','__FDGET__','__TDGET__','__SPGET__','__WIFIST__','__RELAYCFG__']) {
     sendCmd(c); await new Promise(r => setTimeout(r, 200));
   }
 }
@@ -413,6 +416,7 @@ function handleLine(v){
   if (v.startsWith('board:'))     { setBoard(v.slice(6)); return; }
   if (v.startsWith('mac:'))       { $('bmac').textContent = v.slice(4); return; }
   if (v.startsWith('st:'))        { renderStatus(v); return; }
+  if (v.startsWith('relaycfg:'))  { const p = v.slice(9).split('|'); if(p[0]) $('rmUrl').value = p[0]; $('rmAuto').checked = (p[1] === '1'); $('rmKeep').checked = (p[2] === '1'); return; }
   if (v.startsWith('relay:'))     { const e=$('rmMsg'); if(e) e.textContent = v.slice(6); return; }
   if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
 }
@@ -742,7 +746,8 @@ $('rmGo').onclick = async () => {
   if (!url) { $('rmMsg').textContent = 'enter a relay URL'; return; }
   $('rmMsg').textContent = 'switching to relay…';
   try {
-    sendCmd('__RELAYAUTO__:' + ($('rmAuto').checked ? '1' : '0')); await new Promise(r => setTimeout(r, 150));
+    sendCmd('__RELAYAUTO__:' + ($('rmAuto').checked ? '1' : '0')); await new Promise(r => setTimeout(r, 120));
+    sendCmd('__RELAYKEEP__:' + ($('rmKeep').checked ? '1' : '0')); await new Promise(r => setTimeout(r, 120));
     const p = waitFor(v => v.startsWith('relay:'), 8000); await sendCmd('__RELAY__:' + url + '|' + tok); const r = await p;
     if (r.startsWith('relay:up')) { const id = r.slice(9).trim();
       try { localStorage.setItem('relay-last', JSON.stringify({url,id,tok})); } catch(e){}
@@ -751,6 +756,8 @@ $('rmGo').onclick = async () => {
     else $('rmMsg').textContent = r;
   } catch(e) { $('rmMsg').textContent = 'failed: ' + e.message; }
 };
+$('rmAuto').onchange = () => sendCmd('__RELAYAUTO__:' + ($('rmAuto').checked ? '1' : '0'));
+$('rmKeep').onchange = () => sendCmd('__RELAYKEEP__:' + ($('rmKeep').checked ? '1' : '0'));
 $('rcGo').onclick = () => {
   const url = $('rcUrl').value.trim().replace(/\/+$/,''), id = $('rcId').value.trim(), tok = $('rcTok').value.trim();
   if (!url || !id) { alert('Need the relay URL and the board id.'); return; }

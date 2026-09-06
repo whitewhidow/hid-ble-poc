@@ -18,3 +18,5 @@ String      relayGetUrl();                                 // for the portal to 
 String      relayGetToken();
 bool        relayGetAuto();                                // connect-on-boot
 void        relaySetAuto(bool on);
+bool        relayGetKeep();                                // force-keep BLE when remote (else auto by PSRAM)
+void        relaySetKeep(bool on);

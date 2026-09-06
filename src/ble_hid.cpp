@@ -529,14 +529,19 @@ static void handleCmd(const char* cmd) {
         else { url = relayGetUrl(); tok = relayGetToken(); }                        // else use saved settings
         if (!url.length()) ctrlNotify("relay:err set a Relay URL");
         else { relayGoRemote(url, tok); ctrlNotify((String("relay:up ") + relayId()).c_str());
-            // No PSRAM can't fit BLE + WiFi + TLS — drop BLE so the relay's TLS handshake has heap
-            // (USB-HID still types). PSRAM boards keep BLE-HID live alongside the relay.
-            if (ESP.getPsramSize() == 0) { delay(350); bleHidStop(); }
+            // Keep BLE if forced (relaykeep) or the board has PSRAM (room for BLE+WiFi+TLS); else drop
+            // it so the relay's TLS handshake has heap. Dropping BLE also drops BLE-HID — USB-HID still types.
+            bool keep = relayGetKeep() || ESP.getPsramSize() > 0;
+            if (!keep) { delay(350); bleHidStop(); }
         }
     } else if (!strcmp(cmd, "__RELAYOFF__")) {
         relayStop(); ctrlNotify("relay:off");
     } else if (!strncmp(cmd, "__RELAYAUTO__:", 14)) {                               // connect-on-boot toggle
         relaySetAuto(cmd[14] == '1'); ctrlNotify(cmd[14] == '1' ? "relayauto:1" : "relayauto:0");
+    } else if (!strncmp(cmd, "__RELAYKEEP__:", 14)) {                              // force-keep-BLE toggle
+        relaySetKeep(cmd[14] == '1'); ctrlNotify(cmd[14] == '1' ? "relaykeep:1" : "relaykeep:0");
+    } else if (!strcmp(cmd, "__RELAYCFG__")) {                                      // portal loads current relay settings
+        ctrlNotify((String("relaycfg:") + relayGetUrl() + "|" + (relayGetAuto() ? "1" : "0") + "|" + (relayGetKeep() ? "1" : "0")).c_str());
     } else if (!strcmp(cmd, "__REBOOT__")) {                                        // remote reboot -> BLE returns
         ctrlNotify("reboot:ok"); delay(300); ESP.restart();
     } else if (!strncmp(cmd, "__WIFI__:", 9)) {
