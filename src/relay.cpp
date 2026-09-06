@@ -33,10 +33,15 @@ static void normUrl(String& u) {
 }
 
 static void computeId() {
-  String m = bleHidMac() ? String(bleHidMac()) : String("000000");
-  m.replace(":", "");
-  if (m.length() > 6) m = m.substring(m.length() - 6);
-  s_id = "bt-" + m;
+  // Custom id (config) wins. Else the factory-burned base MAC — STABLE across boots (and available
+  // before BLE init). The BLE address can be a rotating/resolvable private address, which would
+  // change our mailbox id every boot, so the portal's saved id goes stale on an auto-boot (board
+  // polls one id, portal talks to another).
+  s_pref.begin("relay", true); String cid = s_pref.getString("id", ""); s_pref.end();
+  cid.trim(); cid.replace(" ", ""); cid.replace("/", "");
+  if (cid.length()) { s_id = cid; return; }
+  char b[16]; snprintf(b, sizeof(b), "bt-%06x", (uint32_t)(ESP.getEfuseMac() & 0xFFFFFF));
+  s_id = b;
 }
 const char* relayId() { if (!s_id.length()) computeId(); return s_id.c_str(); }
 bool relayActive() { return s_active; }
@@ -49,6 +54,8 @@ bool   relayGetKeep()  { s_pref.begin("relay", true); bool k = s_pref.getBool("k
 void   relaySetKeep(bool on) { s_pref.begin("relay", false); s_pref.putBool("keep", on); s_pref.end(); }
 bool   relayGetOpenAp()      { s_pref.begin("relay", true); bool o = s_pref.getBool("openap", false); s_pref.end(); return o; }
 void   relaySetOpenAp(bool on) { s_pref.begin("relay", false); s_pref.putBool("openap", on); s_pref.end(); }
+String relayGetId()          { s_pref.begin("relay", true); String v = s_pref.getString("id", ""); s_pref.end(); return v; }
+void   relaySetId(const String& id) { s_pref.begin("relay", false); s_pref.putString("id", id); s_pref.end(); s_id = ""; computeId(); }  // recompute now
 // Keep BLE up alongside WiFi+TLS? The S3 has enough SRAM even without PSRAM (headless verified);
 // the C5 only fits it with PSRAM (the no-PSRAM Waveshare must drop BLE — SSL alloc -32512).
 bool relayChipCanCoexist() {

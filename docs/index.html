@@ -263,6 +263,7 @@
     <h3 style="margin:18px 0 6px">Remote control (relay)</h3>
     <div class="sub" style="margin:0 0 8px">Drive this board over the internet via a relay you host (see <code>relay/</code>). PSRAM boards keep BLE-HID live alongside; no-PSRAM boards drop BLE (USB-HID still types). Save WiFi creds first (WiFi tab).</div>
     <div class="row" style="display:flex;gap:6px"><input id="rmUrl" placeholder="relay URL — https://…" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" style="flex:2"><input id="rmTok" placeholder="token (optional)" style="flex:1"></div>
+    <input id="rmMailId" placeholder="mailbox id (blank = auto from board MAC)" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" style="width:100%;margin-top:6px">
     <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0"><input type="checkbox" id="rmAuto" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0"><span style="flex:1">Reconnect to the relay on boot</span></label>
     <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0"><input type="checkbox" id="rmKeep" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0"><span style="flex:1">Force-keep BLE when remote (auto-kept on PSRAM boards)</span></label>
     <label class="row" style="align-items:center;gap:10px;cursor:pointer;margin:8px 0 0"><input type="checkbox" id="rmOpenAp" style="flex:0 0 auto;width:20px;height:20px;padding:0;margin:0"><span style="flex:1">Find open AP for relay (on boot; open-AP first, then saved creds)</span></label>
@@ -423,7 +424,7 @@ function handleLine(v){
   if (v.startsWith('board:'))     { setBoard(v.slice(6)); return; }
   if (v.startsWith('mac:'))       { $('bmac').textContent = v.slice(4); return; }
   if (v.startsWith('st:'))        { renderStatus(v); return; }
-  if (v.startsWith('relaycfg:'))  { const p = v.slice(9).split('|'); if(p[0]) $('rmUrl').value = p[0]; $('rmAuto').checked = (p[1] === '1'); $('rmKeep').checked = (p[2] === '1'); if(p[3] !== undefined) $('rmTok').value = p[3]; if($('rmOpenAp')) $('rmOpenAp').checked = (p[4] === '1'); return; }
+  if (v.startsWith('relaycfg:'))  { const p = v.slice(9).split('|'); if(p[0]) $('rmUrl').value = p[0]; $('rmAuto').checked = (p[1] === '1'); $('rmKeep').checked = (p[2] === '1'); if(p[3] !== undefined) $('rmTok').value = p[3]; if($('rmOpenAp')) $('rmOpenAp').checked = (p[4] === '1'); if($('rmMailId')) $('rmMailId').value = (p[5] || ''); return; }
   if (v.startsWith('relay:'))     { const e=$('rmMsg'); if(e) e.textContent = v.slice(6); return; }
   if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
 }
@@ -804,6 +805,7 @@ $('rmScan').onclick = async () => {
 $('rmAuto').onchange = () => sendCmd('__RELAYAUTO__:' + ($('rmAuto').checked ? '1' : '0'));
 $('rmKeep').onchange = () => sendCmd('__RELAYKEEP__:' + ($('rmKeep').checked ? '1' : '0'));
 $('rmOpenAp').onchange = () => sendCmd('__RELAYOPENAP__:' + ($('rmOpenAp').checked ? '1' : '0'));
+$('rmMailId').onchange = () => sendCmd('__RELAYID__:' + $('rmMailId').value.trim().replace(/[ \/]/g,''));
 // Autosave the relay URL/token when you finish editing (no separate Save button).
 function saveRelayCreds(){ sendCmd('__RELAYSET__:' + $('rmUrl').value.trim().replace(/\/+$/,'') + '|' + $('rmTok').value.trim()); $('rmMsg').textContent = 'relay settings saved'; }
 $('rmUrl').onchange = saveRelayCreds;

@@ -544,6 +544,8 @@ static void handleCmd(const char* cmd) {
         relayStop(); ctrlNotify("relay:off");
     } else if (!strncmp(cmd, "__RELAYOPENAP__:", 16)) {                             // find-open-AP-on-boot toggle
         relaySetOpenAp(cmd[16] == '1'); ctrlNotify(cmd[16] == '1' ? "relayopenap:1" : "relayopenap:0");
+    } else if (!strncmp(cmd, "__RELAYID__:", 12)) {                                 // set a custom mailbox id ("" = auto)
+        relaySetId(cmd + 12); ctrlNotify((String("relayid:") + relayId()).c_str());
     } else if (!strncmp(cmd, "__RELAYAUTO__:", 14)) {                               // connect-on-boot toggle
         relaySetAuto(cmd[14] == '1'); ctrlNotify(cmd[14] == '1' ? "relayauto:1" : "relayauto:0");
     } else if (!strncmp(cmd, "__RELAYKEEP__:", 14)) {                              // force-keep-BLE toggle
@@ -553,7 +555,7 @@ static void handleCmd(const char* cmd) {
         relaySaveCreds(bar < 0 ? a : a.substring(0, bar), bar < 0 ? String() : a.substring(bar + 1));
         ctrlNotify("relayset:ok");
     } else if (!strcmp(cmd, "__RELAYCFG__")) {                                      // portal loads current relay settings
-        ctrlNotify((String("relaycfg:") + relayGetUrl() + "|" + (relayGetAuto() ? "1" : "0") + "|" + (relayGetKeep() ? "1" : "0") + "|" + relayGetToken() + "|" + (relayGetOpenAp() ? "1" : "0")).c_str());
+        ctrlNotify((String("relaycfg:") + relayGetUrl() + "|" + (relayGetAuto() ? "1" : "0") + "|" + (relayGetKeep() ? "1" : "0") + "|" + relayGetToken() + "|" + (relayGetOpenAp() ? "1" : "0") + "|" + relayGetId()).c_str());
     } else if (!strcmp(cmd, "__REBOOT__")) {                                        // remote reboot -> BLE returns
         ctrlNotify("reboot:ok"); delay(300); ESP.restart();
     } else if (!strncmp(cmd, "__WIFI__:", 9)) {

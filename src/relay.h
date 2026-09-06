@@ -24,4 +24,6 @@ bool        relayGetKeep();                                // force-keep BLE whe
 void        relaySetKeep(bool on);
 bool        relayGetOpenAp();                              // scan open APs on boot/go-remote (else saved creds)
 void        relaySetOpenAp(bool on);
+String      relayGetId();                                  // custom mailbox id ("" = auto from eFuse MAC)
+void        relaySetId(const String& id);                  // set + recompute the mailbox id
 bool        relayChipCanCoexist();                         // can this board run BLE+WiFi+TLS at once? (S3 yes; C5 only w/ PSRAM)
