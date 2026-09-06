@@ -31,10 +31,13 @@ const CORS = {
 
 const q = k => { if (!queues.has(k)) queues.set(k, []); return queues.get(k); };
 
+const SEP = '\x1e';   // record separator between batched items (never appears in commands)
+// Send EVERY queued item at once (joined by SEP) so a burst drains in one request instead
+// of one-per-request — each request is an expensive fresh TLS handshake on the board.
 function sendItem(key, res) {
-  const item = q(key).shift();
-  if (item === undefined) { res.writeHead(204, CORS); res.end(); }
-  else { res.writeHead(200, { ...CORS, 'Content-Type': 'text/plain' }); res.end(item); }
+  const items = q(key).splice(0);
+  if (!items.length) { res.writeHead(204, CORS); res.end(); }
+  else { res.writeHead(200, { ...CORS, 'Content-Type': 'text/plain' }); res.end(items.join(SEP)); }
 }
 
 // Enqueue and hand it straight to a parked long-poller if one is waiting.
@@ -44,7 +47,7 @@ function enqueue(key, text) {
   if (list && list.length) { const w = list.shift(); clearTimeout(w.timer); sendItem(key, w.res); }
 }
 
-// Return an item now, or park until one arrives / the timeout fires.
+// Return queued items now, or park until one arrives / the timeout fires.
 function longPoll(key, res) {
   if (q(key).length) return sendItem(key, res);
   const timer = setTimeout(() => {

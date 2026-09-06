@@ -430,7 +430,7 @@ async function relayPollLoop(){
   if(_pollOn) return; _pollOn=true;
   while(relay){
     try { const r=await fetch(relay.url+'/poll/'+relay.id,{headers:relayHdr()});
-      if(r.status===200){ const t=await r.text(); if(t) handleLine(t); }
+      if(r.status===200){ const t=await r.text(); if(t) for(const line of t.split('\x1e')) if(line) handleLine(line); }
     } catch(e){ await new Promise(r=>setTimeout(r,1500)); }
   }
   _pollOn=false;

@@ -44,25 +44,32 @@ void   relaySetAuto(bool on) { s_pref.begin("relay", false); s_pref.putBool("aut
 bool   relayGetKeep()  { s_pref.begin("relay", true); bool k = s_pref.getBool("keep", false); s_pref.end(); return k; }
 void   relaySetKeep(bool on) { s_pref.begin("relay", false); s_pref.putBool("keep", on); s_pref.end(); }
 
-// ---- HTTP helpers — ONLY ever called from the relay task, so at most one TLS context
-// exists at a time (a no-PSRAM board can't fit two TLS + WiFi + BLE in heap). ----
-static String httpPull() {                       // GET /pull — modest timeout so idle cycles stay short
-  String u = s_url + "/pull/" + s_id, out;
-  HTTPClient http; http.setTimeout(6000);
-  if (isHttps()) { WiFiClientSecure c; c.setInsecure(); if (!http.begin(c, u)) return out;
-    if (s_tok.length()) http.addHeader("x-relay-token", s_tok); if (http.GET() == 200) out = http.getString(); http.end(); }
-  else { WiFiClient c; if (!http.begin(c, u)) return out;
-    if (s_tok.length()) http.addHeader("x-relay-token", s_tok); if (http.GET() == 200) out = http.getString(); http.end(); }
-  return out;
+// ---- HTTP — ONE persistent keep-alive connection, reused across pull/post so we don't pay
+// a fresh TLS handshake every request (that was the dominant per-command latency). Only ever
+// used from the relay task, so a single TLS context exists at a time. ----
+static const char SEP = '\x1e';                  // batch separator (relay joins queued items with it)
+static WiFiClientSecure s_tls;
+static WiFiClient       s_plain;
+static HTTPClient       s_http;
+static bool             s_tlsReady = false;
+
+// One request on the persistent connection. postBody != nullptr -> POST, else a (long-poll) GET.
+static int httpDo(const String& u, const char* postBody, String* out) {
+  if (!s_tlsReady) { s_tls.setInsecure(); s_tlsReady = true; }
+  s_http.setReuse(true);                          // keep the socket open across begin()/end()
+  s_http.setTimeout(postBody ? 8000 : 30000);     // GET long-polls ~25s server-side
+  bool ok = isHttps() ? s_http.begin(s_tls, u) : s_http.begin(s_plain, u);
+  if (!ok) return 0;
+  if (s_tok.length()) s_http.addHeader("x-relay-token", s_tok);
+  int code;
+  if (postBody) { s_http.addHeader("Content-Type", "text/plain"); code = s_http.POST((uint8_t*)postBody, strlen(postBody)); }
+  else code = s_http.GET();
+  if (code == 200 && out) *out = s_http.getString();
+  s_http.end();                                   // with setReuse(true) this keeps the connection
+  return code;
 }
-static bool httpPostReplyOnce(const String& u, const char* line) {
-  HTTPClient http; http.setTimeout(8000); int code = 0;
-  if (isHttps()) { WiFiClientSecure c; c.setInsecure(); if (!http.begin(c, u)) return false;
-    if (s_tok.length()) http.addHeader("x-relay-token", s_tok); http.addHeader("Content-Type", "text/plain"); code = http.POST((uint8_t*)line, strlen(line)); http.end(); }
-  else { WiFiClient c; if (!http.begin(c, u)) return false;
-    if (s_tok.length()) http.addHeader("x-relay-token", s_tok); http.addHeader("Content-Type", "text/plain"); code = http.POST((uint8_t*)line, strlen(line)); http.end(); }
-  return code == 200;
-}
+static String httpPull() { String out; httpDo(s_url + "/pull/" + s_id, nullptr, &out); return out; }
+static bool   httpPostReplyOnce(const String& u, const char* line) { return httpDo(u, line, nullptr) == 200; }
 
 void relayPostReply(const char* line) {          // queue only; the task does the POST (one TLS at a time)
   if (!s_active || !s_replyQ) return;
@@ -82,11 +89,18 @@ static void relayTask(void*) {
     if (!wasUp) { wasUp = true; s_state = 2; Serial.printf("[relay] WiFi up, IP %s — polling %s/pull/%s\n", WiFi.localIP().toString().c_str(), s_url.c_str(), s_id.c_str()); }
     RelayMsg m;
     while (xQueueReceive(s_replyQ, &m, 0)) { for (int i = 0; i < 4; i++) { if (httpPostReplyOnce(s_url + "/reply/" + s_id, m.s)) break; vTaskDelay(pdMS_TO_TICKS(150)); } }
-    String cmd = httpPull();
-    if (cmd.length()) { Serial.printf("[relay] cmd: %.40s\n", cmd.c_str()); RelayMsg c; strlcpy(c.s, cmd.c_str(), sizeof(c.s));
-      xQueueSend(s_cmdQ, &c, pdMS_TO_TICKS(4000));   // block if the main loop is behind — don't drop keystrokes/commands
-      vTaskDelay(pdMS_TO_TICKS(5)); }
-    else vTaskDelay(pdMS_TO_TICKS(30));
+    String batch = httpPull();                     // may hold several commands joined by SEP
+    if (batch.length()) {
+      int start = 0;
+      while (start < (int)batch.length()) {
+        int sep = batch.indexOf(SEP, start);
+        String one = (sep < 0) ? batch.substring(start) : batch.substring(start, sep);
+        if (one.length()) { Serial.printf("[relay] cmd: %.40s\n", one.c_str());
+          RelayMsg c; strlcpy(c.s, one.c_str(), sizeof(c.s)); xQueueSend(s_cmdQ, &c, pdMS_TO_TICKS(4000)); }
+        if (sep < 0) break; start = sep + 1;
+      }
+      vTaskDelay(pdMS_TO_TICKS(20));                // let the main loop dispatch + produce replies before the next pull
+    } else vTaskDelay(pdMS_TO_TICKS(20));
   }
 }
 
