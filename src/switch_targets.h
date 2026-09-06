@@ -1,6 +1,7 @@
 // Firmware-switch targets: the OTHER apps' latest-release app-bin for THIS board.
-// PoC ships for S3 only; the switch mesh is the two 16MB boards (T-Embed, T-Dongle),
-// which share an identical A/B partition table with BBoink and Terms Portal.
+// PoC ships for S3 only. Switch mesh: T-Embed, T-Dongle and Cardputer each hop to
+// BBoink + BBportal (byte-compatible A/B slots). PoC has no C5 build, so it's absent
+// from the T-Display C5's 2-way mesh; headless is standalone.
 // A gitignored dev_secrets.h may define DEV_OTHER_FW_URL to override target 0.
 #pragma once
 

@@ -116,11 +116,14 @@ The firmware can update itself over WiFi (A/B OTA partitions):
    reboots; at a clean heap it connects WiFi, writes the spare OTA slot, and boots
    the new image (progress on the LCD).
 
-**Switch firmware:** a hidden action (tap the title 3×) flashes the *sibling*
-project's app — [BBoink](https://github.com/whitewhidow/bboink) — into the spare
-slot and boots into it (same OTA machinery, byte-compatible slots). Switch back
-from BBoink's own portal. Each firmware advertises a distinct BLE address so the
-host's GATT cache doesn't collide across a switch.
+**Switch firmware:** a hidden action (tap the title 3×) lists the sibling apps for
+this board — [BBoink](https://github.com/whitewhidow/bboink) (a WiFi handshake hunter)
+and [BBportal](https://github.com/whitewhidow/bb-portal) (a T&C captive portal) — and
+flashes the chosen one into the spare slot, booting into it (same OTA machinery,
+byte-compatible slots). Switch back from that app's own portal. Offered on the three
+S3 mesh boards `tembed` / `tdongle` / `cardputer`; `headless` is standalone. Each
+firmware advertises a distinct BLE address so the host's GATT cache doesn't collide
+across a switch.
 
 Releases are cut by tagging: bump `POC_VERSION` in `src/version.h`, then
 `git tag vX.Y.Z && git push --tags`. CI (`release.yml`) builds each board and
