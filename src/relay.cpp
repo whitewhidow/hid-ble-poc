@@ -145,32 +145,37 @@ static bool relayTryOpenAps() {
   return ok;
 }
 
+static const uint32_t RELAY_DROP_RETRY_MS = 5UL * 60 * 1000;   // after a DROP, wait this long before a full find-open+creds retry
 static void relayTask(void*) {
-  bool wasUp = false; uint32_t lastLog = 0;
+  bool wasUp = false, everUp = false; uint32_t lastLog = 0, retryAt = 0;
   for (;;) {
-    if (!s_active) { s_state = 0; wasUp = false; vTaskDelay(pdMS_TO_TICKS(400)); continue; }
+    if (!s_active) { s_state = 0; wasUp = false; everUp = false; retryAt = 0; vTaskDelay(pdMS_TO_TICKS(400)); continue; }
     if (WiFi.status() != WL_CONNECTED) {
-      wasUp = false;
+      if (wasUp) {                                      // was online, just dropped
+        wasUp = false;
+        if (everUp) { retryAt = millis() + RELAY_DROP_RETRY_MS;   // hold off a full retry for 5 min (ESP auto-reconnect covers a blip meanwhile)
+          Serial.println("[relay] STA dropped — full find-open+creds retry in 5 min"); }
+      }
+      if (retryAt && (int32_t)(millis() - retryAt) < 0) { s_state = 1; vTaskDelay(pdMS_TO_TICKS(1000)); continue; }   // cooling down
+      // initial connect (retries fast), OR the 5-min post-drop cooldown elapsed -> full (re)connect attempt
       if (s_openAp) {
         s_state = 3;                                    // scanning/attempting -> STA blinks BLUE
-        if (!relayTryOpenAps()) {
-          if (netHasCreds()) {                          // no open AP reached the relay -> fall back to saved creds
-            Serial.println("[relay] no open AP reachable — falling back to saved WiFi creds");
-            WiFi.disconnect(true, true); WiFi.mode(WIFI_OFF); vTaskDelay(pdMS_TO_TICKS(300));  // flush captive DNS/lwip state
-            netConnect();
-            uint32_t t0 = millis();
-            while (WiFi.status() != WL_CONNECTED && millis() - t0 < 10000) vTaskDelay(pdMS_TO_TICKS(200));
-          }
-          if (WiFi.status() != WL_CONNECTED) vTaskDelay(pdMS_TO_TICKS(8000));   // still nothing — rescan
+        if (!relayTryOpenAps() && netHasCreds()) {      // no open AP reached the relay -> fall back to saved creds
+          Serial.println("[relay] no open AP reachable — falling back to saved WiFi creds");
+          WiFi.disconnect(true, true); WiFi.mode(WIFI_OFF); vTaskDelay(pdMS_TO_TICKS(300));  // flush captive DNS/lwip state
+          netConnect();
+          uint32_t t0 = millis(); while (WiFi.status() != WL_CONNECTED && millis() - t0 < 10000) vTaskDelay(pdMS_TO_TICKS(200));
         }
       } else {
-        s_state = 1;
-        if (millis() - lastLog > 3000) { lastLog = millis(); Serial.printf("[relay] waiting for WiFi (status=%d)\n", WiFi.status()); }
-        vTaskDelay(pdMS_TO_TICKS(500));
+        s_state = 1; netConnect();
+        uint32_t t0 = millis(); while (WiFi.status() != WL_CONNECTED && millis() - t0 < 10000) vTaskDelay(pdMS_TO_TICKS(200));
       }
+      // still down? initial -> retry in 8s; already been online -> honour the 5-min drop cooldown
+      if (WiFi.status() != WL_CONNECTED) retryAt = millis() + (everUp ? RELAY_DROP_RETRY_MS : 8000);
+      else retryAt = 0;
       continue;
     }
-    if (!wasUp) { wasUp = true;
+    if (!wasUp) { wasUp = true; everUp = true; retryAt = 0;   // online -> clear any pending drop cooldown
       s_tls.stop(); s_plain.stop();                // a keep-alive socket from a previous network (open-AP scan / captive) is dead — start fresh
       dns_clear_cache();                           // flush any host->captive-IP entry left by a probed open AP
       // Confirm the relay is reachable with a FAST isolated GET /health so we show online immediately,
