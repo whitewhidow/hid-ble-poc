@@ -66,7 +66,8 @@ static bool httpPostReplyOnce(const String& u, const char* line) {
 
 void relayPostReply(const char* line) {          // queue only; the task does the POST (one TLS at a time)
   if (!s_active || !s_replyQ) return;
-  RelayMsg m; strlcpy(m.s, line, sizeof(m.s)); xQueueSend(s_replyQ, &m, 0);
+  RelayMsg m; strlcpy(m.s, line, sizeof(m.s));
+  xQueueSend(s_replyQ, &m, pdMS_TO_TICKS(4000));  // block if full — don't drop chunks of a burst (e.g. __PLGET__)
 }
 
 static void relayTask(void*) {
@@ -82,8 +83,9 @@ static void relayTask(void*) {
     RelayMsg m;
     while (xQueueReceive(s_replyQ, &m, 0)) { for (int i = 0; i < 4; i++) { if (httpPostReplyOnce(s_url + "/reply/" + s_id, m.s)) break; vTaskDelay(pdMS_TO_TICKS(150)); } }
     String cmd = httpPull();
-    if (cmd.length()) { Serial.printf("[relay] cmd: %.40s\n", cmd.c_str()); RelayMsg c; strlcpy(c.s, cmd.c_str(), sizeof(c.s)); xQueueSend(s_cmdQ, &c, 0);
-      vTaskDelay(pdMS_TO_TICKS(40)); }
+    if (cmd.length()) { Serial.printf("[relay] cmd: %.40s\n", cmd.c_str()); RelayMsg c; strlcpy(c.s, cmd.c_str(), sizeof(c.s));
+      xQueueSend(s_cmdQ, &c, pdMS_TO_TICKS(4000));   // block if the main loop is behind — don't drop keystrokes/commands
+      vTaskDelay(pdMS_TO_TICKS(5)); }
     else vTaskDelay(pdMS_TO_TICKS(30));
   }
 }
@@ -109,8 +111,8 @@ bool relayGoRemote(const String& url, const String& token) {
   Serial.printf("[relay] go remote: %s as %s — bringing up WiFi STA\n", s_url.c_str(), s_id.c_str());
   netConnect();                                  // STA up with the saved WiFi creds
   s_active = true;
-  if (!s_cmdQ)   s_cmdQ   = xQueueCreate(8, sizeof(RelayMsg));
-  if (!s_replyQ) s_replyQ = xQueueCreate(8, sizeof(RelayMsg));
+  if (!s_cmdQ)   s_cmdQ   = xQueueCreate(16, sizeof(RelayMsg));
+  if (!s_replyQ) s_replyQ = xQueueCreate(16, sizeof(RelayMsg));
   if (!s_task)   xTaskCreatePinnedToCore(relayTask, "relay", 8192, nullptr, 1, &s_task, 0);
   return true;
 }

@@ -840,7 +840,7 @@ async function loadLib(name){
   plStat('loading ' + name + '…');
   try {
     await sendCmd('__PLGET__:' + name);
-    const r = await waitFor(v => v === 'plend:' + name || v === 'plerr:read');
+    const r = await waitFor(v => v === 'plend:' + name || v === 'plerr:read', 20000);   // 20s: multi-chunk load over the relay is slower
     $('libtext').disabled=false; $('plsave').disabled=false;
     plStat(r==='plerr:read' ? 'could not read ' + name : 'editing ' + name + ' (' + $('libtext').value.length + ' bytes)');
   } catch(e){ plStat('✖ ' + e.message); }
