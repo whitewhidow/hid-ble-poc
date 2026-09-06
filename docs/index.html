@@ -337,7 +337,7 @@ function log(m){ const e=$('log'); e.textContent += m+'\n'; e.scrollTop = e.scro
 const QUIET_TX = ['__STATUS__','__WIFIST__','__VER__','__BONDS__','__TIME__','__AUTOGET__','__ABGET__','__OSGET__','__FDGET__','__TDGET__','__SPGET__','__RELAYCFG__','__PLLIST__','__PLSLOTS__','__SWITCHLIST__','__W__:','__WEND__','__USBTYPE__','__BLETYPE__','__USBKEY__','__BLEKEY__','__USBMOUSE__','__BLEMOUSE__','__MAC__'];
 // Includes the option GET-populate replies (autorun/armboot/splash/os/firedelay/typedelay) — they
 // fire on every tab-open; an option CHANGE still shows feedback via its outgoing "→ __*SET__" line.
-const QUIET_RX = ['st:','ver:','bonds:','plbeg:','pldat:','plend:','pllist:','slots:','relaycfg:','mac:','wifi:','ota:','sw:','wok','autorun:','armboot:','splash:','os:','firedelay:','typedelay:'];
+const QUIET_RX = ['st:','ver:','bonds:','pl:','pllist:','slots:','relaycfg:','mac:','wifi:','ota:','sw:','wok','autorun:','armboot:','splash:','os:','firedelay:','typedelay:'];
 function feedTx(s){ if(s && !QUIET_TX.some(q=>s.startsWith(q))) log('→ '+s); }
 function feedRx(v){ if(v && !QUIET_RX.some(q=>v.startsWith(q))) log('← '+v); }
 // Log a status transition ONCE (deduped) — periodic polls repeat the same value every few seconds;
@@ -359,16 +359,9 @@ async function withRetry(op, label){
   }
   throw last;
 }
-// Inactivity wait for a streaming transfer: fail only after idleMs with NO chunk activity, so a large
-// actively-streaming load never trips it. The plbeg:/pldat: handlers call _bump() on each chunk.
-let _bump = null;
-function waitForIdle(matchDone, idleMs){
-  return new Promise((res, rej) => {
-    let last = Date.now(); _bump = () => { last = Date.now(); };
-    const iv = setInterval(() => { if (Date.now()-last > idleMs){ clearInterval(iv); _bump=null; waiter=null; rej(new Error('board timeout')); } }, 400);
-    waiter = { match: matchDone, resolve: v => { clearInterval(iv); _bump=null; waiter=null; res(v); } };
-  });
-}
+// Send a command and await the reply matching `match` — the request/response unit for pull-based
+// chunked transfers (a dropped reply just re-requests that chunk).
+async function req(cmd, match, ms){ const p = waitFor(match, ms || ackMs()); await sendCmd(cmd); return p; }
 
 let rxCh = null, refreshTimer = null;
 let relay = null, boardId = '', _pollOn = false;   // remote-control transport
@@ -442,9 +435,7 @@ function renderDevices(payload){
 // Dispatch one line from EITHER transport (BLE notify or a relay reply).
 function handleLine(v){
   feedRx(v);                                       // echo every meaningful board reply to the feedback log
-  if (v.startsWith('plbeg:')) { libBuf = ''; const pp=v.split(':'); _plExpect = +pp[pp.length-1]||0; if(_bump) _bump(); return; }
-  if (v.startsWith('pldat:')) { libBuf += v.slice(6); if(_bump) _bump(); return; }
-  if (v.startsWith('plend:')) { if (waiter && waiter.match(v)) waiter.resolve(v); return; }   // completeness verified in loadLibOnce
+  // 'pl:' payload chunks + 'plerr:read' fall through to the waiter (req in loadLibOnce)
   if (v.startsWith('pllist:')) { renderLib(v.slice(7)); return; }
   if (v.startsWith('slots:'))  { renderSlots(v.slice(6)); return; }
   if (waiter && waiter.match(v)) { waiter.resolve(v); return; }
@@ -884,8 +875,6 @@ function plStat(m){ $('plstat').textContent = m; }
 let libNames = [];            // library payload names
 let curLib = null;            // name loaded in the editor
 let slotMap = { linux:'', windows:'', macos:'', custom:'' };
-let libBuf = '';              // accumulates pldat: chunks
-let _plExpect = -1;           // declared payload length from plbeg: (to detect a chunk dropped on the relay)
 const OSES = ['linux','windows','macos','custom'];
 const OSLBL = { linux:'Linux', windows:'Windows', macos:'Macos', custom:'Custom' };
 
@@ -935,27 +924,30 @@ function buildSlotRows(){
     row.append(lbl, sel, btn); box.appendChild(row);
   }
 }
-async function loadLibOnce(name){                 // inactivity timeout: only fails if chunks stop arriving
-  libBuf = ''; _plExpect = -1;
-  await sendCmd('__PLGET__:' + name);
-  const r = await waitForIdle(v => v === 'plend:' + name || v === 'plerr:read', ackMs());
-  if (r === 'plerr:read') { $('libtext').value = ''; return r; }
-  // A chunk dropped on the relay -> libBuf is short of the length plbeg declared. Treat as a
-  // 'timeout' so withRetry re-loads (safe: plend already ended the stream, so no chunk mixing).
-  const got = new TextEncoder().encode(libBuf).length;
-  if (_plExpect >= 0 && got < _plExpect) throw new Error('timeout: incomplete payload ('+got+'/'+_plExpect+' B)');
-  $('libtext').value = libBuf;                    // commit only a verified-complete payload
-  return r;
+// PULL the payload one chunk at a time (like the note editor): __PLGET__:name:off -> pl:<nextoff>:<total>:<b64>.
+// A reply dropped on the relay just re-requests that chunk (via withRetry) — no push-stream to lose chunks from.
+async function loadLibOnce(name){
+  const ms = ackMs(); let off=0, total=1, buf=[];
+  while (off < total){
+    const line = await req('__PLGET__:'+name+':'+off, v => v.startsWith('pl:') || v==='plerr:read', ms);
+    if (line === 'plerr:read') throw new Error('read error');
+    const m = line.match(/^pl:(\d+):(\d+):(.*)$/); if(!m) break;
+    const nextoff=+m[1]; total=+m[2]; const b64=m[3];
+    if (b64){ const bin=atob(b64); for(let i=0;i<bin.length;i++) buf.push(bin.charCodeAt(i)); }
+    if (nextoff<=off) break; off=nextoff;
+  }
+  return buf;
 }
 async function loadLib(name){
   if (!online() || busy || !name) return;
-  busy = true; curLib = name; libBuf = '';
+  busy = true; curLib = name;
   $('libtext').value=''; $('libtext').disabled=true; $('plsave').disabled=true;
   plStat('loading ' + name + '…');
   try {
-    const r = await withRetry(() => loadLibOnce(name), 'load ' + name);
-    plStat(r==='plerr:read' ? 'could not read ' + name : 'editing ' + name + ' (' + $('libtext').value.length + ' bytes)');
-  } catch(e){ plStat('✖ ' + e.message); }
+    const buf = await withRetry(() => loadLibOnce(name), 'load ' + name);
+    $('libtext').value = new TextDecoder('utf-8').decode(new Uint8Array(buf));
+    plStat('editing ' + name + ' (' + buf.length + ' bytes)');
+  } catch(e){ plStat(e.message==='read error' ? 'could not read ' + name : '✖ ' + e.message); }
   finally { busy=false; $('libtext').disabled=false; $('plsave').disabled=false; }
 }
 // One full write attempt. __PLPUT__ TRUNCATES+rewrites the file, so re-running the whole thing

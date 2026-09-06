@@ -13,6 +13,15 @@
 #include "display.h"   // OTA progress on the LCD
 #include <Arduino.h>
 #include <Preferences.h>   // persist the AUTORUN setting in NVS
+#include "mbedtls/base64.h"   // payload chunks are base64 (safe over the relay's record-separator batching)
+
+// base64-encode up to a small chunk (CK=120 raw -> <=160 chars). Used by the pull-based __PLGET__.
+static String plB64(const uint8_t* d, size_t n) {
+  if (!n) return "";
+  unsigned char out[168]; size_t olen = 0;
+  if (mbedtls_base64_encode(out, sizeof(out), &olen, d, n) != 0) return "";
+  out[olen] = 0; return String((char*)out);
+}
 #include <NimBLEDevice.h>
 
 extern void pocRequestFwFetch(bool self);   // main.cpp: flag a reboot-to-fetch (self/switch)
@@ -776,17 +785,20 @@ static void handleCmd(const char* cmd) {
     } else if (!strcmp(cmd, "__PLSLOTS__")) {
         ctrlNotify((String("slots:") + pocSlotAssignments()).c_str());
     } else if (!strncmp(cmd, "__PLGET__:", 10)) {
-        const char* name = cmd + 10; String c;
-        if (!pocLibRead(name, c)) { ctrlNotify("plerr:read"); }
+        // Pull ONE chunk at <off> per request (like the note editor) -> one reply per request, so a
+        // reply dropped on the relay just retries that request instead of leaving a partial payload.
+        String arg = cmd + 10;
+        int c1 = arg.indexOf(':');                     // "name:off" — payload names contain no ':'
+        String name = (c1 < 0) ? arg : arg.substring(0, c1);
+        int off = (c1 < 0) ? 0 : arg.substring(c1 + 1).toInt();
+        String c;
+        if (!pocLibRead(name.c_str(), c)) { ctrlNotify("plerr:read"); }
         else {
-            String hdr = "plbeg:"; hdr += name; hdr += ":"; hdr += c.length(); ctrlNotify(hdr.c_str());
-            delay(20);
-            const size_t CK = 160;
-            for (size_t i = 0; i < c.length(); i += CK) {
-                size_t n = (c.length() - i < CK) ? (c.length() - i) : CK;
-                String d = "pldat:"; d += c.substring(i, i + n); ctrlNotify(d.c_str()); delay(20);
-            }
-            String end = "plend:"; end += name; ctrlNotify(end.c_str());
+            int total = c.length(); if (off < 0) off = 0; if (off > total) off = total;
+            const int CK = 120;                        // raw bytes/chunk -> base64 ~160 chars
+            int n = (total - off < CK) ? (total - off) : CK;
+            String b64 = plB64((const uint8_t*)c.c_str() + off, n);
+            ctrlNotify((String("pl:") + (off + n) + ":" + total + ":" + b64).c_str());
         }
     } else if (!strncmp(cmd, "__PLPUT__:", 10)) {
         ctrlNotify(pocLibWriteBegin(cmd + 10) ? "wok" : "ferr:open");   // then __W__ chunks + __WEND__
