@@ -332,6 +332,12 @@ const RX  = 'a0c50001-1234-4b0a-9c5e-000000000000';
 const TX  = 'a0c50002-1234-4b0a-9c5e-000000000000';
 const $ = id => document.getElementById(id);
 function log(m){ const e=$('log'); e.textContent += m+'\n'; e.scrollTop = e.scrollHeight; }
+// Generic Board-feedback echo: user actions -> "→ cmd", board replies -> "← reply". Denylists keep
+// background polls/getters, chunk streams and high-frequency input (typing/keys/mouse) out of the log.
+const QUIET_TX = ['__STATUS__','__WIFIST__','__VER__','__BONDS__','__TIME__','__AUTOGET__','__ABGET__','__OSGET__','__FDGET__','__TDGET__','__SPGET__','__RELAYCFG__','__PLLIST__','__PLSLOTS__','__PLGET__','__SWITCHLIST__','__W__:','__WEND__','__USBTYPE__','__BLETYPE__','__USBKEY__','__BLEKEY__','__USBMOUSE__','__BLEMOUSE__','__MAC__'];
+const QUIET_RX = ['st:','ver:','bonds:','plbeg:','pldat:','plend:','pllist:','slots:','relaycfg:','mac:','wifi:','ota:','sw:','wok'];
+function feedTx(s){ if(s && !QUIET_TX.some(q=>s.startsWith(q))) log('→ '+s); }
+function feedRx(v){ if(v && !QUIET_RX.some(q=>v.startsWith(q))) log('← '+v); }
 
 let rxCh = null, refreshTimer = null;
 let relay = null, boardId = '', _pollOn = false;   // remote-control transport
@@ -341,6 +347,7 @@ let fileBuf = '';             // accumulates fdat: chunks during a load
 let waiter = null;            // {match, resolve} for a pending board reply
 
 async function sendCmd(s){
+  feedTx(s);
   if (relay) return relaySend(s);                  // remote: POST the command to the relay
   if(!rxCh) return;
   const d = new TextEncoder().encode(s);
@@ -350,6 +357,7 @@ async function sendCmd(s){
 // Reliable write (with response) + optional binary prefix — used for file ops so
 // nothing is silently dropped mid-transfer.
 async function sendReliable(bytes){
+  feedTx(typeof bytes === 'string' ? bytes : new TextDecoder().decode(bytes));   // logs the file-op start (__PLPUT__), chunks are quiet
   if (relay) return relaySend(typeof bytes === 'string' ? bytes : new TextDecoder().decode(bytes));
   if(!rxCh) return;
   await rxCh.writeValue(bytes);
@@ -402,6 +410,7 @@ function renderDevices(payload){
 
 // Dispatch one line from EITHER transport (BLE notify or a relay reply).
 function handleLine(v){
+  feedRx(v);                                       // echo every meaningful board reply to the feedback log
   if (v.startsWith('plbeg:')) { libBuf = ''; return; }
   if (v.startsWith('pldat:')) { libBuf += v.slice(6); return; }
   if (v.startsWith('plend:')) { $('libtext').value = libBuf; if (waiter && waiter.match(v)) waiter.resolve(v); return; }
@@ -426,7 +435,7 @@ function handleLine(v){
   if (v.startsWith('st:'))        { renderStatus(v); return; }
   if (v.startsWith('relaycfg:'))  { const p = v.slice(9).split('|'); if(p[0]) $('rmUrl').value = p[0]; $('rmAuto').checked = (p[1] === '1'); $('rmKeep').checked = (p[2] === '1'); if(p[3] !== undefined) $('rmTok').value = p[3]; if($('rmOpenAp')) $('rmOpenAp').checked = (p[4] === '1'); if($('rmMailId')) $('rmMailId').value = (p[5] || ''); return; }
   if (v.startsWith('relay:'))     { const e=$('rmMsg'); if(e) e.textContent = v.slice(6); return; }
-  if (v.startsWith('bonds:')) renderDevices(v); else log('board: ' + v);
+  if (v.startsWith('bonds:')) renderDevices(v);     // (unmatched lines already echoed via feedRx at the top)
 }
 
 // ---- relay transport (control the board over the internet; see relay/) ----
