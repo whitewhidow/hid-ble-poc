@@ -43,6 +43,15 @@ bool   relayGetAuto()  { s_pref.begin("relay", true); bool a = s_pref.getBool("a
 void   relaySetAuto(bool on) { s_pref.begin("relay", false); s_pref.putBool("auto", on); s_pref.end(); }
 bool   relayGetKeep()  { s_pref.begin("relay", true); bool k = s_pref.getBool("keep", false); s_pref.end(); return k; }
 void   relaySetKeep(bool on) { s_pref.begin("relay", false); s_pref.putBool("keep", on); s_pref.end(); }
+// Keep BLE up alongside WiFi+TLS? The S3 has enough SRAM even without PSRAM (headless verified);
+// the C5 only fits it with PSRAM (the no-PSRAM Waveshare must drop BLE — SSL alloc -32512).
+bool relayChipCanCoexist() {
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  return true;
+#else
+  return ESP.getPsramSize() > 0;
+#endif
+}
 
 // ---- HTTP — ONE persistent keep-alive connection, reused across pull/post so we don't pay
 // a fresh TLS handshake every request (that was the dominant per-command latency). Only ever

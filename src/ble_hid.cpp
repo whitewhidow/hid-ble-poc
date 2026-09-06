@@ -529,9 +529,9 @@ static void handleCmd(const char* cmd) {
         else { url = relayGetUrl(); tok = relayGetToken(); }                        // else use saved settings
         if (!url.length()) ctrlNotify("relay:err set a Relay URL");
         else { relayGoRemote(url, tok); ctrlNotify((String("relay:up ") + relayId()).c_str());
-            // Keep BLE if forced (relaykeep) or the board has PSRAM (room for BLE+WiFi+TLS); else drop
-            // it so the relay's TLS handshake has heap. Dropping BLE also drops BLE-HID — USB-HID still types.
-            bool keep = relayGetKeep() || ESP.getPsramSize() > 0;
+            // Keep BLE-HID live alongside the relay where the board can (S3, or any PSRAM board);
+            // only the no-PSRAM C5 must drop BLE to free heap for TLS (USB-HID still types there).
+            bool keep = relayGetKeep() || relayChipCanCoexist();
             if (!keep) { delay(350); bleHidStop(); }
         }
     } else if (!strcmp(cmd, "__RELAYOFF__")) {

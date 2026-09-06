@@ -19,5 +19,6 @@ String      relayGetUrl();                                 // for the portal to 
 String      relayGetToken();
 bool        relayGetAuto();                                // connect-on-boot
 void        relaySetAuto(bool on);
-bool        relayGetKeep();                                // force-keep BLE when remote (else auto by PSRAM)
+bool        relayGetKeep();                                // force-keep BLE when remote (else auto)
 void        relaySetKeep(bool on);
+bool        relayChipCanCoexist();                         // can this board run BLE+WiFi+TLS at once? (S3 yes; C5 only w/ PSRAM)
